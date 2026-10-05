@@ -3,24 +3,28 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
-import { LayoutGrid, ScanLine } from "@/components/ui/icons";
+import { LayoutGrid, ScanLine, UtensilsCrossed } from "@/components/ui/icons";
 
-const TABS = [
-  { href: "/merchant/builder", label: "Manage Layout", icon: LayoutGrid },
-  { href: "/pos", label: "Kursi / POS", icon: ScanLine }
-];
-
-// Lets a staff account bounce between the floor builder and the seats/POS
-// view without going back to "/" first. merchant, cashier and admin are all
-// all-in-one staff roles now (see middleware.ts + staffAuth.ts role checks),
-// so every one of them can reach both pages — this tab bar is shown on both
-// so switching back and forth is a single click either way.
-export function StaffNavTabs() {
+// Lets a staff account bounce between the floor builder, the seats/POS view,
+// and menu management — without logging out and back in as a "different"
+// role. merchant, cashier and admin are all all-in-one staff roles now (see
+// middleware.ts + staffAuth.ts role checks), so every one of them can reach
+// all three; this tab bar is shown on the two staff-only pages (builder/POS)
+// so switching is a single click. Menu management itself still lives on the
+// public cafe page (see MenuSection.tsx) — isStaff there is what unlocks the
+// edit controls — so this just deep-links to "#menu" on that same page.
+export function StaffNavTabs({ cafeId }: { cafeId: number }) {
   const pathname = usePathname();
+  const tabs = [
+    { href: "/merchant/builder", label: "Manage Layout", icon: LayoutGrid },
+    { href: "/pos", label: "Kursi / POS", icon: ScanLine },
+    { href: `/cafe/${cafeId}#menu`, label: "Menu", icon: UtensilsCrossed }
+  ];
+
   return (
     <div className="flex items-center gap-1 rounded-full bg-ink-100 p-1">
-      {TABS.map((tab) => {
-        const active = pathname?.startsWith(tab.href);
+      {tabs.map((tab) => {
+        const active = tab.href.startsWith("/cafe/") ? false : pathname?.startsWith(tab.href);
         const Icon = tab.icon;
         return (
           <Link

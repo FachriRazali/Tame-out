@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AuthStatus } from "@/components/ui/AuthStatus";
-import { ArrowLeft, Loader2, Plus, ShieldCheck, Trash2, UserPlus } from "@/components/ui/icons";
+import { ArrowLeft, ImageIcon, Loader2, Plus, ShieldCheck, Trash2, Upload, UserPlus } from "@/components/ui/icons";
 
 interface District {
   id: number;
@@ -252,6 +252,8 @@ function NewCafeForm({ onCreated }: { onCreated: (cafeId: number) => void }) {
   const [latitude, setLatitude] = useState("");
   const [longitude, setLongitude] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [coverImageUrl, setCoverImageUrl] = useState("");
+  const [uploadingImage, setUploadingImage] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -263,6 +265,23 @@ function NewCafeForm({ onCreated }: { onCreated: (cafeId: number) => void }) {
         if (d.data?.[0]) setDistrictId(String(d.data[0].id));
       });
   }, []);
+
+  async function uploadCoverImage(file: File) {
+    setUploadingImage(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/admin/upload-cafe-image", { method: "POST", body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error?.message ?? "Could not upload image.");
+      setCoverImageUrl(data.url);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not upload image.");
+    } finally {
+      setUploadingImage(false);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -278,7 +297,8 @@ function NewCafeForm({ onCreated }: { onCreated: (cafeId: number) => void }) {
           address,
           latitude: Number(latitude),
           longitude: Number(longitude),
-          whatsappNumber
+          whatsappNumber,
+          coverImageUrl: coverImageUrl || undefined
         })
       });
       const data = await res.json();
@@ -289,6 +309,7 @@ function NewCafeForm({ onCreated }: { onCreated: (cafeId: number) => void }) {
       setLatitude("");
       setLongitude("");
       setWhatsappNumber("");
+      setCoverImageUrl("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create cafe.");
     } finally {
@@ -321,6 +342,27 @@ function NewCafeForm({ onCreated }: { onCreated: (cafeId: number) => void }) {
             ))
           )}
         </select>
+      </div>
+      <div className="flex items-center gap-3 rounded-lg border border-dashed border-ink-200 p-3">
+        {coverImageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={coverImageUrl} alt="Cover preview" className="h-14 w-20 rounded-md object-cover" />
+        ) : (
+          <div className="flex h-14 w-20 items-center justify-center rounded-md bg-ink-100 text-ink-300">
+            <ImageIcon size={18} />
+          </div>
+        )}
+        <label className="flex cursor-pointer items-center gap-1.5 rounded-full bg-ink-100 px-3 py-1.5 text-xs font-semibold text-ink-600 hover:bg-ink-200">
+          {uploadingImage ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+          {uploadingImage ? "Uploading…" : coverImageUrl ? "Change photo" : "Upload cover photo"}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="hidden"
+            onChange={(e) => e.target.files?.[0] && uploadCoverImage(e.target.files[0])}
+          />
+        </label>
+        <span className="text-[11px] text-ink-400">Optional — tampil di card &amp; halaman cafe.</span>
       </div>
       <input
         required

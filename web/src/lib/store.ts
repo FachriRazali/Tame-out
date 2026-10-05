@@ -180,6 +180,7 @@ export interface CreateCafeInput {
   priceTier?: "$" | "$$" | "$$$";
   avgPriceIdr?: number;
   description?: string;
+  coverImageUrl?: string;
 }
 
 // Created by super_admin via /admin — no merchant/admin/cashier is attached
@@ -195,8 +196,8 @@ export async function createCafe(input: CreateCafeInput): Promise<{ id: number; 
     slug = `${base}-${attempt + 2}`;
   }
   const rows = await query<any>(
-    `INSERT INTO cafes (district_id, name, slug, description, address, latitude, longitude, price_tier, avg_price_idr, whatsapp_number)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+    `INSERT INTO cafes (district_id, name, slug, description, address, latitude, longitude, price_tier, avg_price_idr, whatsapp_number, cover_image_url)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
      RETURNING id, name`,
     [
       input.districtId,
@@ -208,7 +209,8 @@ export async function createCafe(input: CreateCafeInput): Promise<{ id: number; 
       input.longitude,
       input.priceTier ?? "$$",
       input.avgPriceIdr ?? 25000,
-      input.whatsappNumber
+      input.whatsappNumber,
+      input.coverImageUrl ?? null
     ]
   );
   return { id: rows[0].id, name: rows[0].name };

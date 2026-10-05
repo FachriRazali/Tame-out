@@ -48,7 +48,7 @@ export default function PosPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {cafeId && <StaffNavTabs />}
+            {cafeId && <StaffNavTabs cafeId={cafeId} />}
             <AuthStatus />
             <ThemeToggle />
           </div>

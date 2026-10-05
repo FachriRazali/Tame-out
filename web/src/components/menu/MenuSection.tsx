@@ -108,7 +108,7 @@ export function MenuSection({ cafeId, menuDocumentUrl, menuDocumentType }: Props
   }
 
   return (
-    <div className="mt-6">
+    <div id="menu" className="mt-6">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-lg font-bold text-ink-900">
           <UtensilsCrossed size={18} /> Menu

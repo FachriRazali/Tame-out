@@ -44,7 +44,8 @@ export async function POST(req: NextRequest) {
     latitude,
     longitude,
     priceTier: body.priceTier,
-    description: body.description ? String(body.description) : undefined
+    description: body.description ? String(body.description) : undefined,
+    coverImageUrl: body.coverImageUrl ? String(body.coverImageUrl) : undefined
   });
   return NextResponse.json({ data: cafe }, { status: 201 });
 }
