@@ -18,13 +18,15 @@ export function StaffNavTabs({ cafeId }: { cafeId: number }) {
   const tabs = [
     { href: "/merchant/builder", label: "Manage Layout", icon: LayoutGrid },
     { href: "/pos", label: "Kursi / POS", icon: ScanLine },
-    { href: `/cafe/${cafeId}#menu`, label: "Menu", icon: UtensilsCrossed }
+    { href: `/cafe/${cafeId}#menu`, label: "Menu", icon: UtensilsCrossed },
   ];
 
   return (
     <div className="flex items-center gap-1 rounded-full bg-ink-100 p-1">
       {tabs.map((tab) => {
-        const active = tab.href.startsWith("/cafe/") ? false : pathname?.startsWith(tab.href);
+        const active = tab.href.startsWith("/cafe/")
+          ? false
+          : pathname?.startsWith(tab.href);
         const Icon = tab.icon;
         return (
           <Link
@@ -32,7 +34,9 @@ export function StaffNavTabs({ cafeId }: { cafeId: number }) {
             href={tab.href}
             className={clsx(
               "flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition",
-              active ? "bg-surface text-ink-900 shadow-sm" : "text-ink-500 hover:text-ink-800"
+              active
+                ? "bg-surface text-ink-900 shadow-sm"
+                : "text-ink-500 hover:text-ink-800",
             )}
           >
             <Icon size={13} /> {tab.label}
