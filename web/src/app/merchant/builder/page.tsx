@@ -7,7 +7,6 @@ import { FloorPlanBuilder } from "@/components/builder/FloorPlanBuilder";
 import { ArrowLeft, LayoutGrid, Loader2 } from "@/components/ui/icons";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AuthStatus } from "@/components/ui/AuthStatus";
-import { StaffNavTabs } from "@/components/staff/StaffNavTabs";
 
 interface SessionUser {
   id: number;
@@ -23,6 +22,7 @@ export default function MerchantBuilderPage() {
   );
   const [floors, setFloors] = useState<Floor[] | null>(null);
   const [cafeName, setCafeName] = useState("");
+  const [firstCafeId, setFirstCafeId] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -31,14 +31,26 @@ export default function MerchantBuilderPage() {
       .catch(() => setSession(null));
   }, []);
 
-  // merchant/cashier/admin are all cafe-scoped via cafe_staff, and now all
-  // three can reach the builder (all-in-one staff) — the session carries
-  // which one cafe this account may edit.
-  const cafeId =
+  const isCafeStaff =
     session?.role === "merchant" ||
     session?.role === "cashier" ||
-    session?.role === "admin"
-      ? session.cafeId
+    session?.role === "admin";
+  const isSuperAdmin = session?.role === "super_admin";
+
+  // super_admin isn't cafe-scoped (no cafe_staff row) — default to the
+  // platform's first cafe so this page still has something to show when a
+  // super_admin lands here directly (e.g. via the global staff nav).
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    fetch("/api/admin/cafes")
+      .then((r) => r.json())
+      .then((d) => setFirstCafeId(d.data?.[0]?.id));
+  }, [isSuperAdmin]);
+
+  const cafeId = isCafeStaff
+    ? session?.cafeId
+    : isSuperAdmin
+      ? firstCafeId
       : undefined;
 
   useEffect(() => {
@@ -71,7 +83,6 @@ export default function MerchantBuilderPage() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            {cafeId && <StaffNavTabs cafeId={cafeId} />}
             <AuthStatus />
             <ThemeToggle />
           </div>
@@ -85,8 +96,9 @@ export default function MerchantBuilderPage() {
           </div>
         ) : !cafeId ? (
           <p className="py-16 text-center text-sm text-ink-500">
-            Your account isn't assigned to a cafe yet. Ask your super admin to
-            set this up.
+            {isSuperAdmin
+              ? "No cafes yet — create one from /admin first."
+              : "Your account isn't assigned to a cafe yet. Ask your super admin to set this up."}
           </p>
         ) : floors ? (
           <FloorPlanBuilder initialFloors={floors} cafeId={cafeId} />

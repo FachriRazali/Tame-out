@@ -10,10 +10,19 @@ import { getSession } from "@/lib/session";
 // and the per-route role checks), so this gate stays permissive on all three;
 // "merchant" is kept as a selectable role rather than removed, it's just no
 // longer the only one that can open /merchant.
-const RULES: { prefix: string; roles: Array<"super_admin" | "admin" | "merchant" | "cashier" | "customer"> }[] = [
-  { prefix: "/merchant", roles: ["merchant", "cashier", "admin"] },
-  { prefix: "/pos", roles: ["cashier", "merchant", "admin"] },
-  { prefix: "/admin", roles: ["super_admin"] }
+// super_admin is included on /merchant and /pos too, not just /admin — the
+// global staff nav (GlobalStaffNav.tsx) links there for a super_admin
+// session as well, defaulting to the platform's first cafe.
+const RULES: {
+  prefix: string;
+  roles: Array<"super_admin" | "admin" | "merchant" | "cashier" | "customer">;
+}[] = [
+  {
+    prefix: "/merchant",
+    roles: ["merchant", "cashier", "admin", "super_admin"],
+  },
+  { prefix: "/pos", roles: ["cashier", "merchant", "admin", "super_admin"] },
+  { prefix: "/admin", roles: ["super_admin"] },
 ];
 
 export async function middleware(req: NextRequest) {
@@ -30,5 +39,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/merchant/:path*", "/pos/:path*", "/admin/:path*"]
+  matcher: ["/merchant/:path*", "/pos/:path*", "/admin/:path*"],
 };
