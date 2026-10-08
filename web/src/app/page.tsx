@@ -3,7 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { Cafe, District, PriceBucket } from "@/lib/types";
 import { SearchLocationBar } from "@/components/landing/SearchLocationBar";
-import { FilterBar, AvailabilityFilter, SortMode } from "@/components/landing/FilterBar";
+import {
+  FilterBar,
+  AvailabilityFilter,
+  SortMode,
+} from "@/components/landing/FilterBar";
 import { CafeCard } from "@/components/landing/CafeCard";
 import { AdsCarousel } from "@/components/landing/AdsCarousel";
 import { Sparkles } from "@/components/ui/icons";
@@ -17,7 +21,9 @@ export default function LandingPage() {
   const [cafes, setCafes] = useState<Cafe[]>([]);
   const [loading, setLoading] = useState(true);
   const [locating, setLocating] = useState(false);
-  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
   const [districtId, setDistrictId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [priceBuckets, setPriceBuckets] = useState<PriceBucket[]>([]);
@@ -68,7 +74,11 @@ export default function LandingPage() {
   }
 
   function togglePriceBucket(bucket: PriceBucket) {
-    setPriceBuckets((prev) => (prev.includes(bucket) ? prev.filter((b) => b !== bucket) : [...prev, bucket]));
+    setPriceBuckets((prev) =>
+      prev.includes(bucket)
+        ? prev.filter((b) => b !== bucket)
+        : [...prev, bucket],
+    );
   }
 
   // "All cafe · all region" — wipes every filter back to the default, unfiltered view.
@@ -93,9 +103,9 @@ export default function LandingPage() {
   const counts = useMemo(
     () => ({
       green: cafes.filter((c) => c.liveCapacity.color === "green").length,
-      total: cafes.length
+      total: cafes.length,
     }),
-    [cafes]
+    [cafes],
   );
 
   return (
@@ -118,17 +128,23 @@ export default function LandingPage() {
       <section className="relative overflow-hidden bg-gradient-to-b from-brand-950 via-brand-900 to-ink-50 pb-24 pt-14 text-white sm:pt-20">
         <div
           className="pointer-events-none absolute inset-0 opacity-20"
-          style={{ backgroundImage: "radial-gradient(circle at 20% 20%, white, transparent 35%)" }}
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 20% 20%, white, transparent 35%)",
+          }}
         />
         <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-surface/10 px-3 py-1 text-xs font-semibold text-brand-100">
+          {/* Cream colorway — matches the brand guideline's own hero lockup (cream logo on sage/dark-green). */}
+          <Logo size={64} variant="cream" className="mx-auto mb-5" />
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-mustard px-3 py-1 text-xs font-bold text-brand-dark">
             <Sparkles size={13} /> Real seats, in real time
           </span>
-          <h1 className="mt-4 text-3xl font-extrabold leading-tight sm:text-5xl">
+          <h1 className="mt-4 font-display text-4xl font-normal leading-tight tracking-wide sm:text-6xl">
             Find a cafe with a seat waiting for you.
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-sm text-brand-100/80 sm:text-base">
-            Live capacity, interactive floor plans, and instant reservations — no more guessing if there's room.
+            Live capacity, interactive floor plans, and instant reservations —
+            no more guessing if there's room.
           </p>
 
           <div className="mt-8">
@@ -176,7 +192,10 @@ export default function LandingPage() {
             {counts.total > 0 && (
               <>
                 {" "}
-                · <span className="text-capacity-green font-semibold">{counts.green} with open seats</span>
+                ·{" "}
+                <span className="text-capacity-green font-semibold">
+                  {counts.green} with open seats
+                </span>
               </>
             )}
           </span>
@@ -185,7 +204,10 @@ export default function LandingPage() {
         {loading ? (
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-72 animate-pulse rounded-2xl bg-surface/70 ring-1 ring-ink-900/5" />
+              <div
+                key={i}
+                className="h-72 animate-pulse rounded-2xl bg-surface/70 ring-1 ring-ink-900/5"
+              />
             ))}
           </div>
         ) : cafes.length === 0 ? (

@@ -7,11 +7,19 @@ import { Loader2, Lock, UserRound } from "@/components/ui/icons";
 import { Logo } from "@/components/ui/Logo";
 
 const DEMO_ACCOUNTS = [
-  { label: "Super Admin", email: "superadmin@cafeflow.demo", password: "superadmin123" },
-  { label: "Merchant", email: "merchant@cafeflow.demo", password: "merchant123" },
+  {
+    label: "Super Admin",
+    email: "superadmin@cafeflow.demo",
+    password: "superadmin123",
+  },
+  {
+    label: "Merchant",
+    email: "merchant@cafeflow.demo",
+    password: "merchant123",
+  },
   { label: "Cashier", email: "cashier@cafeflow.demo", password: "cashier123" },
   { label: "Admin", email: "admin@cafeflow.demo", password: "admin123" },
-  { label: "Customer", email: "fachri@privy.id", password: "customer123" }
+  { label: "Customer", email: "fachri@privy.id", password: "customer123" },
 ];
 
 const ROLE_HOME: Record<string, string> = {
@@ -19,7 +27,7 @@ const ROLE_HOME: Record<string, string> = {
   merchant: "/merchant/builder",
   admin: "/merchant/builder",
   cashier: "/pos",
-  customer: "/"
+  customer: "/",
 };
 
 export default function LoginPage() {
@@ -46,7 +54,7 @@ function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error?.message ?? "Login failed.");
@@ -64,11 +72,14 @@ function LoginForm() {
     <main className="flex min-h-screen items-center justify-center bg-ink-50 px-4">
       <div className="w-full max-w-sm rounded-2xl bg-surface p-6 shadow-card ring-1 ring-ink-900/5">
         <div className="mb-6">
-          <Logo />
+          <Logo size={56} />
         </div>
 
         <h1 className="mb-1 text-lg font-bold text-ink-900">Staff login</h1>
-        <p className="mb-5 text-sm text-ink-500">Merchant, cashier and admin sign in here. Customers don't need an account to browse or reserve.</p>
+        <p className="mb-5 text-sm text-ink-500">
+          Merchant, cashier and admin sign in here. Customers don't need an
+          account to browse or reserve.
+        </p>
 
         <form onSubmit={submit} className="space-y-3">
           <label className="block">
@@ -98,7 +109,9 @@ function LoginForm() {
             />
           </label>
 
-          {error && <p className="text-sm font-medium text-capacity-red">{error}</p>}
+          {error && (
+            <p className="text-sm font-medium text-capacity-red">{error}</p>
+          )}
 
           <button
             type="submit"
@@ -111,7 +124,9 @@ function LoginForm() {
         </form>
 
         <div className="mt-5 border-t border-dashed border-ink-100 pt-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">Demo accounts</p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-400">
+            Demo accounts
+          </p>
           <div className="grid grid-cols-2 gap-1.5">
             {DEMO_ACCOUNTS.map((acc) => (
               <button
@@ -129,7 +144,10 @@ function LoginForm() {
           </div>
         </div>
 
-        <Link href="/" className="mt-5 block text-center text-xs font-semibold text-ink-400 hover:text-ink-600">
+        <Link
+          href="/"
+          className="mt-5 block text-center text-xs font-semibold text-ink-400 hover:text-ink-600"
+        >
           ← Back to Tame&apos;out
         </Link>
       </div>

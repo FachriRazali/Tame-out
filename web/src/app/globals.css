@@ -2,8 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Pearl Jean — brand display font (see Tame'out brand guideline). Self-hosted
+   from /public/fonts so it works offline and isn't subject to the Google
+   Fonts egress restriction build warning seen with Inter. */
+@font-face {
+  font-family: "Pearl Jean";
+  src: url("/fonts/PearlJean.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Pearl Jean", ui-sans-serif, system-ui, sans-serif;
 
   /* Light theme — beige, anchored on #F5F5DC */
   --bg: 245 245 220;
@@ -53,7 +65,9 @@ html {
 body {
   background: rgb(var(--bg));
   color: rgb(var(--ink-900));
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
 ::-webkit-scrollbar {

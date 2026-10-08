@@ -1,42 +1,38 @@
-"use client";
-
-import { useState } from "react";
-import { Coffee } from "@/components/ui/icons";
-
+// The real Tame'out logo artwork (brand guideline), not a placeholder —
+// "Primary logo" is the icon+wordmark lockup, exported in two colorways:
+// sage green (for light/pale surfaces — every header in this app) and cream
+// (for the dark-green hero gradient, matching the brand sheet's own hero
+// presentation). No dynamic img-with-fallback needed anymore since these
+// files ship with the app under public/brand/.
 interface Props {
   size?: number;
-  showWordmark?: boolean;
+  // "green" for light/pale backgrounds (headers, cards — the default and by
+  // far the most common case here), "cream" for the dark-green hero section.
+  variant?: "green" | "cream";
   className?: string;
 }
 
-// Drop a real logo file at web/public/logo.png (square, transparent background
-// recommended) to replace the placeholder badge below — nothing else needs to
-// change, this component picks it up automatically and falls back to the
-// Coffee-icon badge if the file is missing or fails to load.
-export function Logo({ size = 32, showWordmark = true, className = "" }: Props) {
-  const [imgFailed, setImgFailed] = useState(false);
+const LOGO_SRC: Record<"green" | "cream", string> = {
+  green: "/brand/primary-logo-green.png",
+  cream: "/brand/primary-logo-cream.png",
+};
 
+// Native aspect ratio of the exported artwork (738x430) — passed through so
+// Next/the browser can reserve the right box and avoid layout shift.
+const ASPECT_RATIO = 738 / 430;
+
+export function Logo({ size = 40, variant = "green", className = "" }: Props) {
+  const height = size;
+  const width = Math.round(size * ASPECT_RATIO);
   return (
-    <span className={`flex items-center gap-2 font-extrabold text-ink-900 ${className}`}>
-      {!imgFailed ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src="/logo.png"
-          alt="Tame'out"
-          width={size}
-          height={size}
-          className="rounded-xl object-contain"
-          onError={() => setImgFailed(true)}
-        />
-      ) : (
-        <span
-          className="flex shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white"
-          style={{ width: size, height: size }}
-        >
-          <Coffee size={Math.round(size * 0.56)} />
-        </span>
-      )}
-      {showWordmark && <span>Tame&apos;out</span>}
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={LOGO_SRC[variant]}
+      alt="Tame'out"
+      width={width}
+      height={height}
+      className={`object-contain ${className}`}
+      style={{ height, width }}
+    />
   );
 }

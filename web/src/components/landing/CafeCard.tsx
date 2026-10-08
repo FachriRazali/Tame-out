@@ -44,11 +44,14 @@ export function CafeCard({ cafe, index }: { cafe: Cafe; index: number }) {
             className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
           />
           <div className="absolute left-3 top-3">
-            <CapacityBadge color={cafe.liveCapacity.color} occupancyPct={cafe.liveCapacity.occupancyPct} />
+            <CapacityBadge
+              color={cafe.liveCapacity.color}
+              occupancyPct={cafe.liveCapacity.occupancyPct}
+            />
           </div>
           <div
             className={`absolute right-3 top-3 rounded-full px-2.5 py-1 text-xs font-bold tracking-wide shadow-sm backdrop-blur ${priceBadgeStyle(
-              cafe.avgPriceIdr
+              cafe.avgPriceIdr,
             )}`}
           >
             ~{formatRupiahShort(cafe.avgPriceIdr)}
@@ -57,9 +60,14 @@ export function CafeCard({ cafe, index }: { cafe: Cafe; index: number }) {
 
         <div className="flex flex-1 flex-col gap-2 p-4">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="text-base font-bold leading-tight text-ink-900">{cafe.name}</h3>
+            <h3 className="text-base font-bold leading-tight text-ink-900">
+              {cafe.name}
+            </h3>
             <div className="flex shrink-0 items-center gap-1 text-sm font-semibold text-ink-800">
-              <Star size={14} className="fill-amber-400 text-amber-400" />
+              <Star
+                size={14}
+                className="fill-brand-mustard text-brand-mustard"
+              />
               {cafe.avgRating}
             </div>
           </div>
@@ -67,15 +75,23 @@ export function CafeCard({ cafe, index }: { cafe: Cafe; index: number }) {
           <div className="flex items-center gap-1 text-xs text-ink-400">
             <MapPin size={13} />
             {cafe.districtName}
-            {cafe.distanceKm !== undefined && <span className="text-ink-600"> · {formatDistance(cafe.distanceKm)}</span>}
+            {cafe.distanceKm !== undefined && (
+              <span className="text-ink-600">
+                {" "}
+                · {formatDistance(cafe.distanceKm)}
+              </span>
+            )}
           </div>
 
           <div className="mt-auto flex items-center justify-between pt-2 text-xs text-ink-600">
             <span className="flex items-center gap-1">
               <Users size={13} />
-              {cafe.liveCapacity.tablesAvailable} tables open of {cafe.liveCapacity.totalTables}
+              {cafe.liveCapacity.tablesAvailable} tables open of{" "}
+              {cafe.liveCapacity.totalTables}
             </span>
-            <span className="font-semibold text-brand-700 opacity-0 transition group-hover:opacity-100">View floor plan →</span>
+            <span className="font-semibold text-brand-700 opacity-0 transition group-hover:opacity-100">
+              View floor plan →
+            </span>
           </div>
         </div>
       </Link>
