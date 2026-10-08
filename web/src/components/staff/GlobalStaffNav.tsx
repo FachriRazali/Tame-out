@@ -21,6 +21,9 @@ interface SessionUser {
 // so these shortcuts default to whichever cafe comes first on the
 // platform — see MerchantBuilderPage/PosPage, which resolve the same
 // default when a super_admin lands on those pages directly.
+//
+// Styled as a soft sage-tinted band (brand-50 wash) with the submark badge,
+// matching the rest of the brand refresh — not just a plain gray strip.
 export function GlobalStaffNav() {
   const [session, setSession] = useState<SessionUser | null | undefined>(
     undefined,
@@ -55,7 +58,17 @@ export function GlobalStaffNav() {
   if (!cafeId) return null;
 
   return (
-    <div className="flex items-center justify-center border-b border-ink-100 bg-surface px-4 py-2">
+    <div className="flex flex-wrap items-center justify-center gap-3 border-b border-brand-100 bg-brand-50/70 px-4 py-2.5">
+      <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-700">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/brand/submark-transparent.png"
+          alt=""
+          width={18}
+          height={18}
+        />
+        <span className="hidden sm:inline">Staff tools</span>
+      </div>
       <StaffNavTabs cafeId={cafeId} />
     </div>
   );
