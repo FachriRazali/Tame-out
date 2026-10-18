@@ -202,7 +202,7 @@ export default function LandingPage() {
         </div>
 
         {loading ? (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-3 gap-2.5 sm:gap-5">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
@@ -215,7 +215,11 @@ export default function LandingPage() {
             No cafes match your filters yet. Try widening your search.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          // Always 3 cards per row, even on phones — requested explicitly so
+          // the grid never collapses to 1-2 columns on small screens.
+          // CafeCard's own text/image sizing shrinks responsively to still
+          // read fine at a ~110px-wide mobile column.
+          <div className="grid grid-cols-3 gap-2.5 sm:gap-5">
             {cafes.map((cafe, i) => (
               <CafeCard key={cafe.id} cafe={cafe} index={i} />
             ))}
