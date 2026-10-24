@@ -14,7 +14,7 @@ interface Props {
 
 const LOGO_SRC: Record<"green" | "cream", string> = {
   green: "/brand/primary-logo-green copy.png",
-  cream: "/brand/primary-logo-cream copy.png",
+  cream: "/brand/primary-logo-cream.png",
 };
 
 // The mark is now tightly cropped (no transparent padding around it, so it
