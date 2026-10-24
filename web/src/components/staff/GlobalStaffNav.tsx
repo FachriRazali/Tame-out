@@ -64,8 +64,9 @@ export function GlobalStaffNav() {
         <img
           src="/brand/submark-transparent.png"
           alt=""
-          width={18}
+          width={22}
           height={18}
+          className="object-contain"
         />
         <span className="hidden sm:inline">Staff tools</span>
       </div>

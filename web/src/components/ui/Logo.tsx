@@ -1,9 +1,9 @@
-// The real Tame'out logo artwork (brand guideline), not a placeholder —
-// "Primary logo" is the icon+wordmark lockup, exported in two colorways:
-// sage green (for light/pale surfaces — every header in this app) and cream
-// (for the dark-green hero gradient, matching the brand sheet's own hero
-// presentation). No dynamic img-with-fallback needed anymore since these
-// files ship with the app under public/brand/.
+// Revision (per the user's own newest asset drop, "Tame 2 Out"): the brand
+// mark is now the standalone icon alone — the two-figure "T" submark — not
+// the icon+wordmark lockup used before. Same two colorways as before: sage
+// green (for light/pale surfaces — every header in this app) and cream (for
+// the dark-green hero gradient). Both are transparent-background exports, so
+// they drop straight onto whatever surface they're placed on.
 interface Props {
   size?: number;
   // "green" for light/pale backgrounds (headers, cards — the default and by
@@ -17,9 +17,11 @@ const LOGO_SRC: Record<"green" | "cream", string> = {
   cream: "/brand/primary-logo-cream.png",
 };
 
-// Native aspect ratio of the exported artwork (738x430) — passed through so
-// Next/the browser can reserve the right box and avoid layout shift.
-const ASPECT_RATIO = 738 / 430;
+// The mark is now tightly cropped (no transparent padding around it, so it
+// renders at its true size in the navbar instead of looking tiny) — native
+// artwork is 432x354. Kept as a constant so a future asset swap only needs
+// to change this in one place.
+const ASPECT_RATIO = 432 / 354;
 
 export function Logo({ size = 40, variant = "green", className = "" }: Props) {
   const height = size;

@@ -6,14 +6,14 @@ export const STATUS_FILL: Record<TableStatus, string> = {
   available: "#22c081",
   reserved: "#f2a71b",
   occupied: "#ef4d5e",
-  maintenance: "#9aa2b1"
+  maintenance: "#9aa2b1",
 };
 
 export const STATUS_LABEL: Record<TableStatus, string> = {
   available: "Available",
   reserved: "Reserved",
   occupied: "Occupied",
-  maintenance: "Maintenance"
+  maintenance: "Maintenance",
 };
 
 interface Props {
@@ -24,7 +24,13 @@ interface Props {
   scale?: number;
 }
 
-export function TableShape({ table, selected, interactive = true, onClick, scale = 1 }: Props) {
+export function TableShape({
+  table,
+  selected,
+  interactive = true,
+  onClick,
+  scale = 1,
+}: Props) {
   const fill = STATUS_FILL[table.status];
   const isRound = table.shape === "round";
   const isRect = table.shape === "rectangle";
@@ -82,9 +88,22 @@ export function TableShape({ table, selected, interactive = true, onClick, scale
       {table.hasPowerOutlet && (
         // Minimalist power-outlet indicator — a small line-icon instead of the
         // 🔌 emoji, which rendered inconsistently across platforms/fonts.
-        <g transform={`translate(${(table.width * scale) / 2 - 27}, ${(table.height * scale) / 2 + 9})`}>
+        // Icon (10px) + 3px gap + label (fixed 46px via textLength, so the
+        // width doesn't depend on whichever font the browser falls back to)
+        // = 59px total, centered on the table by starting at cx - 29.5.
+        <g
+          transform={`translate(${(table.width * scale) / 2 - 29.5}, ${(table.height * scale) / 2 + 9})`}
+        >
           <Plug size={10} color="#0f8a5f" strokeWidth={2.2} />
-          <text x={13} y={9} fontSize={9} fontWeight={600} fill="#0f8a5f">
+          <text
+            x={13}
+            y={8.5}
+            fontSize={9}
+            fontWeight={600}
+            fill="#0f8a5f"
+            textLength={46}
+            lengthAdjust="spacingAndGlyphs"
+          >
             Stop kontak
           </text>
         </g>
