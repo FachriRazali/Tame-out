@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { THEME_INIT_SCRIPT } from "@/components/ui/ThemeToggle";
-import { GlobalStaffNav } from "@/components/staff/GlobalStaffNav";
 
 export const metadata: Metadata = {
   title: "Tame'out — Live Capacity & Seat Reservation",
@@ -29,10 +28,7 @@ export default function RootLayout({
         {/* Runs before hydration so the correct theme applies with no flash. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body className="font-sans antialiased">
-        <GlobalStaffNav />
-        {children}
-      </body>
+      <body className="font-sans antialiased">{children}</body>
     </html>
   );
 }

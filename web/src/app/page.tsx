@@ -13,6 +13,7 @@ import { AdsCarousel } from "@/components/landing/AdsCarousel";
 import { Sparkles } from "@/components/ui/icons";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AuthStatus } from "@/components/ui/AuthStatus";
+import { StaffWorkspaceLink } from "@/components/staff/StaffWorkspaceLink";
 import { Logo } from "@/components/ui/Logo";
 import { usePolling } from "@/lib/usePolling";
 
@@ -118,6 +119,7 @@ export default function LandingPage() {
               now gated by real login (middleware.ts), reached via "Staff login" below,
               not advertised on the customer-facing page. */}
           <nav className="flex items-center gap-2 text-sm font-semibold text-ink-600">
+            <StaffWorkspaceLink />
             <AuthStatus />
             <ThemeToggle />
           </nav>

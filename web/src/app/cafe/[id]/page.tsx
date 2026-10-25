@@ -18,6 +18,7 @@ import {
   Wallet,
 } from "@/components/ui/icons";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { StaffCafeBar } from "@/components/staff/StaffCafeBar";
 
 interface CafeDetail extends Cafe {
   floors: Floor[];
@@ -60,6 +61,8 @@ export default function CafeDetailPage() {
 
   return (
     <main className="min-h-screen bg-ink-50 pb-16">
+      {/* Staff-only tab strip — renders nothing for customers. */}
+      <StaffCafeBar cafeId={cafe.id} />
       <div className="relative h-56 w-full sm:h-72">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img

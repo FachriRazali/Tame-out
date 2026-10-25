@@ -1,76 +1,90 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { StaffNavTabs } from "./StaffNavTabs";
+import Link from "next/link";
+import clsx from "clsx";
+import { LayoutGrid, ScanLine, UtensilsCrossed } from "@/components/ui/icons";
 
-interface SessionUser {
-  id: number;
-  fullName: string;
-  email: string;
-  role: "super_admin" | "admin" | "merchant" | "cashier" | "customer";
-  cafeId?: number;
-}
+export type StaffTab = "builder" | "pos" | "menu";
 
-// Rendered once from the root layout, so it shows up on *every* route —
-// the landing page, /login, /admin, the public /cafe/[id] page, and the
-// builder/POS pages themselves — whenever a cafe-scoped staff account
-// (merchant/cashier/admin) or super_admin is signed in. Customers and
-// signed-out visitors get nothing: this bar simply renders null for them.
+// Underline tabs that live INSIDE a staff page's header (Cashier POS, Floor
+// Plan Builder, the cafe page's staff bar, Super Admin) — not a global bar.
+// They let a signed-in staff account hop between the floor builder, the
+// seats/POS view and menu management without re-logging in. merchant,
+// cashier and admin are all-in-one staff roles (see middleware.ts +
+// staffAuth.ts), so every one of them can reach all three.
 //
-// super_admin isn't tied to one cafe (it manages all of them from /admin),
-// so these shortcuts default to whichever cafe comes first on the
-// platform — see MerchantBuilderPage/PosPage, which resolve the same
-// default when a super_admin lands on those pages directly.
-//
-// Styled as a soft sage-tinted band (brand-50 wash) with the submark badge,
-// matching the rest of the brand refresh — not just a plain gray strip.
-export function GlobalStaffNav() {
-  const [session, setSession] = useState<SessionUser | null | undefined>(
-    undefined,
-  );
-  const [firstCafeId, setFirstCafeId] = useState<number | undefined>(undefined);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => setSession(data.user ?? null))
-      .catch(() => setSession(null));
-  }, []);
-
-  const isCafeStaff =
-    session?.role === "merchant" ||
-    session?.role === "cashier" ||
-    session?.role === "admin";
-  const isSuperAdmin = session?.role === "super_admin";
-
-  useEffect(() => {
-    if (!isSuperAdmin) return;
-    fetch("/api/admin/cafes")
-      .then((r) => r.json())
-      .then((d) => setFirstCafeId(d.data?.[0]?.id));
-  }, [isSuperAdmin]);
-
-  const cafeId = isCafeStaff
-    ? session?.cafeId
-    : isSuperAdmin
-      ? firstCafeId
-      : undefined;
-  if (!cafeId) return null;
+// Menu management lives on the public cafe page (MenuSection.tsx — isStaff
+// there unlocks the edit controls), so that tab deep-links to "#menu".
+// `active` says which tab is current; pass nothing (e.g. on /admin) for none.
+export function StaffNavTabs({
+  cafeId,
+  active,
+  className = "mt-3",
+}: {
+  cafeId: number;
+  active?: StaffTab;
+  className?: string;
+}) {
+  const tabs: {
+    key: StaffTab;
+    href: string;
+    label: string;
+    shortLabel: string;
+    icon: typeof LayoutGrid;
+  }[] = [
+    {
+      key: "builder",
+      href: "/merchant/builder",
+      label: "Floor Plan Builder",
+      shortLabel: "Layout",
+      icon: LayoutGrid,
+    },
+    {
+      key: "pos",
+      href: "/pos",
+      label: "Cashier POS",
+      shortLabel: "Kasir POS",
+      icon: ScanLine,
+    },
+    {
+      key: "menu",
+      href: `/cafe/${cafeId}#menu`,
+      label: "Menu cafe",
+      shortLabel: "Menu",
+      icon: UtensilsCrossed,
+    },
+  ];
 
   return (
-    <div className="flex flex-wrap items-center justify-center gap-3 border-b border-brand-100 bg-brand-50/70 px-4 py-2.5">
-      <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-brand-700">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/brand/submark-transparent.png"
-          alt=""
-          width={22}
-          height={18}
-          className="object-contain"
-        />
-        <span className="hidden sm:inline">Staff tools</span>
-      </div>
-      <StaffNavTabs cafeId={cafeId} />
-    </div>
+    <nav
+      aria-label="Staff tools"
+      className={clsx(
+        "-mb-px flex items-center gap-0.5 overflow-x-auto",
+        className,
+      )}
+    >
+      {tabs.map((tab) => {
+        const isActive = tab.key === active;
+        const Icon = tab.icon;
+        return (
+          <Link
+            key={tab.key}
+            href={tab.href}
+            title={tab.label}
+            aria-current={isActive ? "page" : undefined}
+            className={clsx(
+              "flex shrink-0 items-center gap-1.5 whitespace-nowrap border-b-[3px] px-2.5 py-2.5 text-[11.5px] font-bold transition sm:px-4 sm:text-sm",
+              isActive
+                ? "border-brand-500 text-brand-700"
+                : "border-transparent text-ink-400 hover:border-ink-100 hover:text-ink-800",
+            )}
+          >
+            <Icon size={15} />
+            <span className="hidden sm:inline">{tab.label}</span>
+            <span className="sm:hidden">{tab.shortLabel}</span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }

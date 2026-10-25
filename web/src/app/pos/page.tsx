@@ -1,79 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { POSDashboard } from "@/components/pos/POSDashboard";
 import { ArrowLeft, Loader2, ScanLine } from "@/components/ui/icons";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AuthStatus } from "@/components/ui/AuthStatus";
-
-interface SessionUser {
-  id: number;
-  fullName: string;
-  email: string;
-  role: "super_admin" | "admin" | "merchant" | "cashier" | "customer";
-  cafeId?: number;
-}
+import { StaffNavTabs } from "@/components/staff/StaffNavTabs";
+import { useStaffContext } from "@/lib/useStaffContext";
 
 export default function PosPage() {
-  const [session, setSession] = useState<SessionUser | null | undefined>(
-    undefined,
-  );
-  const [firstCafeId, setFirstCafeId] = useState<number | undefined>(undefined);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => setSession(data.user ?? null))
-      .catch(() => setSession(null));
-  }, []);
-
-  const isCafeStaff =
-    session?.role === "cashier" ||
-    session?.role === "merchant" ||
-    session?.role === "admin";
-  const isSuperAdmin = session?.role === "super_admin";
-
-  // super_admin isn't cafe-scoped (no cafe_staff row) — default to the
-  // platform's first cafe so this page still has something to show when a
-  // super_admin lands here directly (e.g. via the global staff nav).
-  useEffect(() => {
-    if (!isSuperAdmin) return;
-    fetch("/api/admin/cafes")
-      .then((r) => r.json())
-      .then((d) => setFirstCafeId(d.data?.[0]?.id));
-  }, [isSuperAdmin]);
-
-  const cafeId = isCafeStaff
-    ? session?.cafeId
-    : isSuperAdmin
-      ? firstCafeId
-      : undefined;
+  // Same resolution the Floor Plan Builder uses (see useStaffContext): cafe
+  // staff get their own cafe; super_admin defaults to the platform's first.
+  const { session, isSuperAdmin, cafeId } = useStaffContext();
 
   return (
     <main className="min-h-screen bg-ink-50 pb-16">
       <header className="border-b border-ink-100 bg-surface">
-        <div className="mx-auto flex max-w-6xl items-start justify-between px-4 py-4 sm:px-6">
-          <div>
-            <Link
-              href="/"
-              className="flex items-center gap-1.5 text-xs font-semibold text-ink-400 hover:text-ink-700"
-            >
-              <ArrowLeft size={13} /> Back to Tame&apos;out
-            </Link>
-            <h1 className="mt-1 flex items-center gap-2 text-xl font-extrabold text-ink-900">
-              <ScanLine size={20} className="text-brand-600" /> Cashier POS
-            </h1>
-            <p className="text-sm text-ink-500">
-              {session
-                ? `Signed in as ${session.email}`
-                : "Live table grid for your cafe"}
-            </p>
+        <div className="mx-auto max-w-6xl px-4 pt-4 sm:px-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <Link
+                href="/"
+                className="flex items-center gap-1.5 text-xs font-semibold text-ink-400 hover:text-ink-700"
+              >
+                <ArrowLeft size={13} /> Back to Tame&apos;out
+              </Link>
+              <h1 className="mt-1 flex items-center gap-2 text-xl font-extrabold text-ink-900">
+                <ScanLine size={20} className="text-brand-600" /> Cashier POS
+              </h1>
+              <p className="text-sm text-ink-500">
+                {session
+                  ? `Signed in as ${session.email}`
+                  : "Live table grid for your cafe"}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <AuthStatus />
+              <ThemeToggle />
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            <AuthStatus />
-            <ThemeToggle />
-          </div>
+          {cafeId ? (
+            <StaffNavTabs cafeId={cafeId} active="pos" />
+          ) : (
+            <div className="h-4" />
+          )}
         </div>
       </header>
 

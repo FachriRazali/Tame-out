@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AuthStatus } from "@/components/ui/AuthStatus";
+import { StaffNavTabs } from "@/components/staff/StaffNavTabs";
+import { useStaffContext } from "@/lib/useStaffContext";
 import {
   ArrowLeft,
   ImageIcon,
@@ -45,6 +47,7 @@ const ROLE_LABEL: Record<StaffRole, string> = {
 };
 
 export default function AdminPage() {
+  const { cafeId: toolsCafeId } = useStaffContext();
   const [cafes, setCafes] = useState<CafeOption[] | null>(null);
   const [selectedCafeId, setSelectedCafeId] = useState<number | null>(null);
   const [staff, setStaff] = useState<StaffAccount[] | null>(null);
@@ -110,26 +113,33 @@ export default function AdminPage() {
   return (
     <main className="min-h-screen bg-ink-50 pb-16">
       <header className="border-b border-ink-100 bg-surface">
-        <div className="mx-auto flex max-w-4xl items-start justify-between px-4 py-4 sm:px-6">
-          <div>
-            <Link
-              href="/"
-              className="flex items-center gap-1.5 text-xs font-semibold text-ink-400 hover:text-ink-700"
-            >
-              <ArrowLeft size={13} /> Back to Tame&apos;out
-            </Link>
-            <h1 className="mt-1 flex items-center gap-2 text-xl font-extrabold text-ink-900">
-              <ShieldCheck size={20} className="text-brand-600" /> Super Admin
-            </h1>
-            <p className="text-sm text-ink-500">
-              Add cafes, and create merchant/admin/cashier accounts scoped to
-              each one.
-            </p>
+        <div className="mx-auto max-w-4xl px-4 pt-4 sm:px-6">
+          <div className="flex items-start justify-between">
+            <div>
+              <Link
+                href="/"
+                className="flex items-center gap-1.5 text-xs font-semibold text-ink-400 hover:text-ink-700"
+              >
+                <ArrowLeft size={13} /> Back to Tame&apos;out
+              </Link>
+              <h1 className="mt-1 flex items-center gap-2 text-xl font-extrabold text-ink-900">
+                <ShieldCheck size={20} className="text-brand-600" /> Super Admin
+              </h1>
+              <p className="text-sm text-ink-500">
+                Add cafes, and create merchant/admin/cashier accounts scoped to
+                each one.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <AuthStatus />
+              <ThemeToggle />
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <AuthStatus />
-            <ThemeToggle />
-          </div>
+          {toolsCafeId ? (
+            <StaffNavTabs cafeId={toolsCafeId} />
+          ) : (
+            <div className="h-4" />
+          )}
         </div>
       </header>
 
