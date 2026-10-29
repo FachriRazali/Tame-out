@@ -48,6 +48,8 @@ export {
   Gamepad2,
   Landmark,
   Megaphone,
+  CalendarPlus,
+  Pin,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
 } from "lucide-react";

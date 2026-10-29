@@ -12,7 +12,12 @@ interface Props {
   onClick: (table: CafeTable) => void;
 }
 
-export function BuilderTableNode({ table, selected, onPointerDown, onClick }: Props) {
+export function BuilderTableNode({
+  table,
+  selected,
+  onPointerDown,
+  onClick,
+}: Props) {
   const isRound = table.shape === "round";
   const isRect = table.shape === "rectangle";
   const fill = STATUS_FILL.available;
@@ -25,22 +30,28 @@ export function BuilderTableNode({ table, selected, onPointerDown, onClick }: Pr
         position: "absolute",
         left: table.x,
         top: table.y,
-        width: table.width,
-        height: table.height,
+        // Floor of 16px on the canvas so a table typed as 0–15 px can still be seen and selected.
+        width: Math.max(16, table.width),
+        height: Math.max(16, table.height),
         transform: `rotate(${table.rotation}deg)`,
         backgroundColor: `${fill}22`,
         borderColor: fill,
-        borderRadius: isRound ? "999px" : isRect ? 10 : 14
+        borderRadius: isRound ? "999px" : isRect ? 10 : 14,
       }}
       className={clsx(
         "flex cursor-grab select-none flex-col items-center justify-center border-2 text-center transition-shadow active:cursor-grabbing",
-        selected && "ring-2 ring-ink-900 ring-offset-2"
+        selected && "ring-2 ring-ink-900 ring-offset-2",
       )}
     >
       <span className="text-xs font-bold text-ink-900">{table.tableCode}</span>
       <span className="text-[10px] text-ink-600">{table.capacity} seats</span>
       {/* Minimalist power-outlet indicator — a line-icon instead of the 🔌 emoji. */}
-      {table.hasPowerOutlet && <Plug size={11} strokeWidth={2.2} className="mt-0.5 text-capacity-green" />}
+      {table.hasPowerOutlet && (
+        <span className="mt-0.5 flex items-center gap-0.5 text-[9px] font-semibold text-capacity-green">
+          <Plug size={10} strokeWidth={2.2} />{" "}
+          {Math.max(1, table.powerOutletCount ?? 1)} Stop kontak
+        </span>
+      )}
     </div>
   );
 }

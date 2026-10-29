@@ -7,6 +7,7 @@ import { CafeTable, Reservation, TableStatus } from "@/lib/types";
 import { STATUS_FILL, STATUS_LABEL } from "@/components/floorplan/TableShape";
 import { CapacityBadge } from "@/components/ui/CapacityBadge";
 import {
+  CalendarPlus,
   CircleCheck,
   Loader2,
   LogIn,
@@ -14,7 +15,7 @@ import {
   ScanLine,
   Users,
   Wrench,
-  X
+  X,
 } from "@/components/ui/icons";
 
 type PosTable = CafeTable & { reservation?: Reservation };
@@ -25,6 +26,8 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Which table's "Reserve" form is open in the modal (available tables only).
+  const [reserving, setReserving] = useState(false);
 
   async function refresh() {
     const res = await fetch(`/api/pos/cafes/${cafeId}/tables`);
@@ -52,32 +55,47 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
     await fetch(`/api/pos/tables/${table.id}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action })
+      body: JSON.stringify({ action }),
     });
     await refresh();
     setBusyAction(null);
     setSelected(null);
+    setReserving(false);
     setToast(`${table.tableCode}: ${label}`);
+  }
+
+  function closeModal() {
+    setSelected(null);
+    setReserving(false);
   }
 
   const summary = {
     available: tables.filter((t) => t.status === "available").length,
     reserved: tables.filter((t) => t.status === "reserved").length,
-    occupied: tables.filter((t) => t.status === "occupied").length
+    occupied: tables.filter((t) => t.status === "occupied").length,
   };
-  const occupancyPct = tables.length ? Math.round(((summary.reserved + summary.occupied) / tables.length) * 100) : 0;
+  const occupancyPct = tables.length
+    ? Math.round(((summary.reserved + summary.occupied) / tables.length) * 100)
+    : 0;
 
   return (
     <div>
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <CapacityBadge
-            color={occupancyPct > 85 ? "red" : occupancyPct >= 50 ? "yellow" : "green"}
+            color={
+              occupancyPct > 85
+                ? "red"
+                : occupancyPct >= 50
+                  ? "yellow"
+                  : "green"
+            }
             occupancyPct={occupancyPct}
             size="md"
           />
           <span className="text-sm text-ink-500">
-            {summary.available} available · {summary.reserved} reserved · {summary.occupied} occupied
+            {summary.available} available · {summary.reserved} reserved ·{" "}
+            {summary.occupied} occupied
           </span>
         </div>
         <button
@@ -92,12 +110,17 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
         {tables.map((t) => (
           <button
             key={t.id}
-            onClick={() => setSelected(t)}
+            onClick={() => {
+              setSelected(t);
+              setReserving(false);
+            }}
             className="rounded-2xl border-2 bg-surface p-3 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-card"
             style={{ borderColor: STATUS_FILL[t.status] }}
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-extrabold text-ink-900">{t.tableCode}</span>
+              <span className="text-sm font-extrabold text-ink-900">
+                {t.tableCode}
+              </span>
               <span
                 className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white"
                 style={{ backgroundColor: STATUS_FILL[t.status] }}
@@ -118,34 +141,71 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
       </div>
 
       {selected && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/50 p-4" onClick={() => setSelected(null)}>
-          <div className="w-full max-w-sm rounded-2xl bg-surface p-5 shadow-floating" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/50 p-4"
+          onClick={closeModal}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-surface p-5 shadow-floating"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="mb-4 flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-ink-900">Table {selected.tableCode}</h3>
-                <p className="text-xs text-ink-400">{selected.capacity} seats · {STATUS_LABEL[selected.status]}</p>
+                <h3 className="text-lg font-bold text-ink-900">
+                  Table {selected.tableCode}
+                </h3>
+                <p className="text-xs text-ink-400">
+                  {selected.capacity} seats · {STATUS_LABEL[selected.status]}
+                </p>
               </div>
-              <button onClick={() => setSelected(null)} className="rounded-full p-1.5 text-ink-400 hover:bg-ink-100">
+              <button
+                onClick={closeModal}
+                className="rounded-full p-1.5 text-ink-400 hover:bg-ink-100"
+              >
                 <X size={18} />
               </button>
             </div>
 
             {selected.reservation && (
               <div className="mb-4 rounded-xl bg-ink-50 p-3 text-sm">
-                <p className="font-semibold text-ink-900">{selected.reservation.guestName ?? "Registered guest"}</p>
+                <p className="font-semibold text-ink-900">
+                  {selected.reservation.guestName ?? "Registered guest"}
+                </p>
                 <p className="text-xs text-ink-500">
-                  {selected.reservation.reservationCode} · {selected.reservation.partySize} guests
+                  {selected.reservation.reservationCode} ·{" "}
+                  {selected.reservation.partySize} guests
                 </p>
               </div>
             )}
 
             <div className="space-y-2">
-              {selected.status === "available" && (
-                <ActionButton
-                  icon={<Users size={15} />}
-                  label="Seat walk-in guests"
-                  busy={busyAction === "walk_in_seat"}
-                  onClick={() => runAction(selected, "walk_in_seat", "walk-in seated")}
+              {selected.status === "available" && !reserving && (
+                <>
+                  <ActionButton
+                    icon={<CalendarPlus size={15} />}
+                    label="Reserve table"
+                    onClick={() => setReserving(true)}
+                  />
+                  <ActionButton
+                    icon={<Users size={15} />}
+                    label="Seat walk-in guests"
+                    busy={busyAction === "walk_in_seat"}
+                    onClick={() =>
+                      runAction(selected, "walk_in_seat", "walk-in seated")
+                    }
+                    variant="ghost"
+                  />
+                </>
+              )}
+              {selected.status === "available" && reserving && (
+                <ReserveForm
+                  table={selected}
+                  onCancel={() => setReserving(false)}
+                  onDone={async (guest) => {
+                    await refresh();
+                    closeModal();
+                    setToast(`${selected.tableCode}: reserved for ${guest}`);
+                  }}
                 />
               )}
               {selected.status === "reserved" && (
@@ -154,13 +214,17 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
                     icon={<LogIn size={15} />}
                     label="Check-in (manual)"
                     busy={busyAction === "check_in_manual"}
-                    onClick={() => runAction(selected, "check_in_manual", "checked in")}
+                    onClick={() =>
+                      runAction(selected, "check_in_manual", "checked in")
+                    }
                   />
                   <ActionButton
                     icon={<CircleCheck size={15} />}
                     label="Release / mark available"
                     busy={busyAction === "mark_available"}
-                    onClick={() => runAction(selected, "mark_available", "released")}
+                    onClick={() =>
+                      runAction(selected, "mark_available", "released")
+                    }
                     variant="ghost"
                   />
                 </>
@@ -178,7 +242,13 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
                   icon={<Wrench size={15} />}
                   label="Mark maintenance"
                   busy={busyAction === "mark_maintenance"}
-                  onClick={() => runAction(selected, "mark_maintenance", "set to maintenance")}
+                  onClick={() =>
+                    runAction(
+                      selected,
+                      "mark_maintenance",
+                      "set to maintenance",
+                    )
+                  }
                   variant="ghost"
                 />
               )}
@@ -187,7 +257,9 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
                   icon={<CircleCheck size={15} />}
                   label="Mark available"
                   busy={busyAction === "mark_available"}
-                  onClick={() => runAction(selected, "mark_available", "available")}
+                  onClick={() =>
+                    runAction(selected, "mark_available", "available")
+                  }
                 />
               )}
             </div>
@@ -195,7 +267,15 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
         </div>
       )}
 
-      {scannerOpen && <ScannerModal onClose={() => setScannerOpen(false)} onSuccess={(msg) => { setToast(msg); refresh(); }} />}
+      {scannerOpen && (
+        <ScannerModal
+          onClose={() => setScannerOpen(false)}
+          onSuccess={(msg) => {
+            setToast(msg);
+            refresh();
+          }}
+        />
+      )}
 
       {toast && (
         <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink-900 px-4 py-2.5 text-sm font-semibold text-white shadow-floating">
@@ -206,12 +286,194 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
   );
 }
 
+// Cashier-side reservation for a table that's currently available — the
+// guest is at the counter or on the phone. Confirmed immediately (no
+// down-payment hold), table flips to "reserved", and the usual Check-in
+// button appears when the guest arrives.
+function ReserveForm({
+  table,
+  onCancel,
+  onDone,
+}: {
+  table: PosTable;
+  onCancel: () => void;
+  onDone: (guestName: string) => void | Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [party, setParty] = useState(String(Math.min(2, table.capacity)));
+  const [minutes, setMinutes] = useState("90");
+  const [when, setWhen] = useState<"now" | "later">("now");
+  const [later, setLater] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const partyNum = Number(party);
+  const partyOk =
+    Number.isInteger(partyNum) && partyNum >= 1 && partyNum <= table.capacity;
+  const laterOk =
+    when === "now" ||
+    (later !== "" && !Number.isNaN(new Date(later).getTime()));
+  const canSubmit = name.trim() !== "" && partyOk && laterOk && !busy;
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/pos/tables/${table.id}/reserve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          guestName: name.trim(),
+          guestWhatsapp: whatsapp.trim() || undefined,
+          partySize: partyNum,
+          slotMinutes: Number(minutes),
+          startTime:
+            when === "later" ? new Date(later).toISOString() : undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(
+          data?.error?.message ?? "Could not reserve this table.",
+        );
+      await onDone(name.trim());
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not reserve this table.",
+      );
+      setBusy(false);
+    }
+  }
+
+  const field =
+    "w-full rounded-lg border border-ink-100 bg-surface px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none";
+  return (
+    <div className="space-y-3 rounded-xl bg-ink-50 p-3">
+      <p className="text-xs font-bold uppercase tracking-wide text-ink-400">
+        Reserve table {table.tableCode}
+      </p>
+      <label className="block">
+        <span className="mb-1 block text-xs font-semibold text-ink-600">
+          Nama tamu
+        </span>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="mis. Budi"
+          className={field}
+          autoFocus
+        />
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-xs font-semibold text-ink-600">
+          WhatsApp (opsional)
+        </span>
+        <input
+          value={whatsapp}
+          onChange={(e) => setWhatsapp(e.target.value)}
+          inputMode="tel"
+          placeholder="08xxxxxxxxxx"
+          className={field}
+        />
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-ink-600">
+            Jumlah tamu (maks {table.capacity})
+          </span>
+          <input
+            value={party}
+            onChange={(e) => setParty(e.target.value.replace(/\D/g, ""))}
+            inputMode="numeric"
+            className={field}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-ink-600">
+            Durasi
+          </span>
+          <select
+            value={minutes}
+            onChange={(e) => setMinutes(e.target.value)}
+            className={field}
+          >
+            <option value="60">60 menit</option>
+            <option value="90">90 menit</option>
+            <option value="120">2 jam</option>
+            <option value="180">3 jam</option>
+          </select>
+        </label>
+      </div>
+      {!partyOk && party !== "" && (
+        <p className="text-[11px] font-semibold text-capacity-red">
+          Jumlah tamu harus 1 sampai {table.capacity}.
+        </p>
+      )}
+      <div>
+        <span className="mb-1 block text-xs font-semibold text-ink-600">
+          Mulai
+        </span>
+        <div className="grid grid-cols-2 gap-2">
+          {(["now", "later"] as const).map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => setWhen(w)}
+              className={clsx(
+                "rounded-lg border px-3 py-2 text-xs font-bold transition",
+                when === w
+                  ? "border-brand-500 bg-brand-50 text-brand-700"
+                  : "border-ink-100 text-ink-600 hover:bg-surface",
+              )}
+            >
+              {w === "now" ? "Sekarang" : "Pilih jam"}
+            </button>
+          ))}
+        </div>
+        {when === "later" && (
+          <input
+            type="datetime-local"
+            value={later}
+            onChange={(e) => setLater(e.target.value)}
+            className={clsx(field, "mt-2")}
+          />
+        )}
+      </div>
+      {error && (
+        <p className="text-xs font-semibold text-capacity-red">{error}</p>
+      )}
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={onCancel}
+          disabled={busy}
+          className="rounded-xl border border-ink-200 py-2.5 text-sm font-bold text-ink-700 hover:bg-surface disabled:opacity-60"
+        >
+          Batal
+        </button>
+        <button
+          onClick={submit}
+          disabled={!canSubmit}
+          className="flex items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {busy ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <CalendarPlus size={15} />
+          )}{" "}
+          Reserve
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ActionButton({
   icon,
   label,
   onClick,
   busy,
-  variant = "solid"
+  variant = "solid",
 }: {
   icon: React.ReactNode;
   label: string;
@@ -225,7 +487,9 @@ function ActionButton({
       disabled={busy}
       className={clsx(
         "flex w-full items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-bold transition disabled:opacity-60",
-        variant === "solid" ? "bg-brand-600 text-white hover:bg-brand-700" : "border border-ink-200 text-ink-700 hover:bg-ink-50"
+        variant === "solid"
+          ? "bg-brand-600 text-white hover:bg-brand-700"
+          : "border border-ink-200 text-ink-700 hover:bg-ink-50",
       )}
     >
       {busy ? <Loader2 size={15} className="animate-spin" /> : icon}
@@ -234,7 +498,13 @@ function ActionButton({
   );
 }
 
-function ScannerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: (msg: string) => void }) {
+function ScannerModal({
+  onClose,
+  onSuccess,
+}: {
+  onClose: () => void;
+  onSuccess: (msg: string) => void;
+}) {
   const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -245,7 +515,7 @@ function ScannerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
     const res = await fetch("/api/pos/checkin", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ qrPayload: payload })
+      body: JSON.stringify({ qrPayload: payload }),
     });
     const data = await res.json();
     setLoading(false);
@@ -264,7 +534,10 @@ function ScannerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
           <h3 className="flex items-center gap-2 text-lg font-bold text-ink-900">
             <QrCode size={18} /> Scan ticket
           </h3>
-          <button onClick={onClose} className="rounded-full p-1.5 text-ink-400 hover:bg-ink-100">
+          <button
+            onClick={onClose}
+            className="rounded-full p-1.5 text-ink-400 hover:bg-ink-100"
+          >
             <X size={18} />
           </button>
         </div>
@@ -272,7 +545,9 @@ function ScannerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
         <div className="mb-4 flex h-40 items-center justify-center rounded-xl border-2 border-dashed border-brand-300 bg-brand-50/60">
           <ScanLine size={40} className="animate-pulse-soft text-brand-500" />
         </div>
-        <p className="mb-3 text-center text-xs text-ink-400">Camera simulation — paste or type the guest's ticket token below.</p>
+        <p className="mb-3 text-center text-xs text-ink-400">
+          Camera simulation — paste or type the guest's ticket token below.
+        </p>
 
         <input
           value={token}
@@ -280,13 +555,21 @@ function ScannerModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: 
           placeholder="e.g. 9012-a1b2c3d4"
           className="mb-2 w-full rounded-lg border border-ink-100 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none"
         />
-        {error && <p className="mb-2 text-xs font-semibold text-capacity-red">{error}</p>}
+        {error && (
+          <p className="mb-2 text-xs font-semibold text-capacity-red">
+            {error}
+          </p>
+        )}
         <button
           onClick={() => submit(token)}
           disabled={!token || loading}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-50"
         >
-          {loading ? <Loader2 size={15} className="animate-spin" /> : <CircleCheck size={15} />}
+          {loading ? (
+            <Loader2 size={15} className="animate-spin" />
+          ) : (
+            <CircleCheck size={15} />
+          )}
           Confirm check-in
         </button>
       </div>

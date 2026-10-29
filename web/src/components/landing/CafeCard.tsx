@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { Cafe } from "@/lib/types";
 import { formatDistance } from "@/lib/haversine";
 import { CapacityBadge } from "@/components/ui/CapacityBadge";
-import { MapPin, Star, Users } from "@/components/ui/icons";
+import { MapPin, Pin, Star, Users } from "@/components/ui/icons";
 import clsx from "clsx";
 
 // Price badge — now driven by avgPriceIdr (the same number the landing
@@ -68,6 +68,18 @@ export function CafeCard({ cafe, index }: { cafe: Cafe; index: number }) {
               occupancyPct={cafe.liveCapacity.occupancyPct}
             />
           </div>
+
+          {/* Pinned by the super admin (Ranking & featured in /admin). */}
+          {cafe.isBoosted && (
+            <span
+              title="Featured"
+              className="absolute bottom-1 left-1 flex items-center gap-0.5 rounded-full bg-brand-mustard px-1.5 py-0.5 text-[8px] font-bold text-brand-dark shadow-sm sm:bottom-3 sm:left-3 sm:gap-1 sm:px-2.5 sm:py-1 sm:text-xs"
+            >
+              <Pin size={9} className="sm:hidden" />
+              <Pin size={12} className="hidden sm:block" />
+              <span className="hidden sm:inline">Featured</span>
+            </span>
+          )}
 
           <div
             className={`absolute right-1 top-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide shadow-sm backdrop-blur sm:right-3 sm:top-3 sm:px-2.5 sm:py-1 sm:text-xs ${priceBadgeStyle(

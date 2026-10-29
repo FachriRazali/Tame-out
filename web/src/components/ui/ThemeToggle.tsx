@@ -22,7 +22,11 @@ export function ThemeToggle() {
   return (
     <button
       onClick={toggle}
-      aria-label={isDark ? "Switch to beige (light) theme" : "Switch to light-brown (dark) theme"}
+      aria-label={
+        isDark
+          ? "Switch to light (beige) theme"
+          : "Switch to dark (green) theme"
+      }
       title={isDark ? "Light mode" : "Dark mode"}
       className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-100 text-ink-700 transition hover:bg-ink-100/70"
     >

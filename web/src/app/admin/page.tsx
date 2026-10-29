@@ -6,10 +6,14 @@ import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AuthStatus } from "@/components/ui/AuthStatus";
 import { StaffNavTabs } from "@/components/staff/StaffNavTabs";
 import { useStaffContext } from "@/lib/useStaffContext";
+import { readImageAsDataUrl } from "@/lib/readImage";
 import {
   ArrowLeft,
+  Check,
   ImageIcon,
   Loader2,
+  Megaphone,
+  Pin,
   Plus,
   ShieldCheck,
   Trash2,
@@ -27,6 +31,9 @@ interface CafeOption {
   id: number;
   name: string;
   isActive: boolean;
+  popularityScore: number;
+  isBoosted: boolean;
+  boostTagline: string;
 }
 
 type StaffRole = "merchant" | "admin" | "cashier";
@@ -182,6 +189,13 @@ export default function AdminPage() {
                         : "border-ink-100 text-ink-600 hover:border-ink-200")
                     }
                   >
+                    {c.isBoosted && (
+                      <Pin
+                        size={11}
+                        className="text-brand-600"
+                        aria-label="Pinned"
+                      />
+                    )}
                     {c.name}
                     {!c.isActive && (
                       <span className="text-ink-400">(inactive)</span>
@@ -201,6 +215,24 @@ export default function AdminPage() {
                 </button>
               )}
             </div>
+
+            {selectedCafe && (
+              <CoverImagePanel
+                key={`cover-${selectedCafe.id}`}
+                cafe={selectedCafe}
+              />
+            )}
+
+            {selectedCafe && (
+              <RankingPanel
+                key={selectedCafe.id}
+                cafe={selectedCafe}
+                featuredCount={
+                  cafes.filter((c) => c.isBoosted && c.isActive).length
+                }
+                onSaved={() => refreshCafes()}
+              />
+            )}
 
             {selectedCafeId && (
               <div className="rounded-2xl bg-surface p-5 shadow-soft">
@@ -288,6 +320,354 @@ export default function AdminPage() {
   );
 }
 
+// Add / replace / remove the cover photo of an EXISTING cafe (the photo that
+// shows on the landing-page card, the featured carousel and the cafe page).
+// Previously the photo could only be set while creating a new cafe.
+function CoverImagePanel({ cafe }: { cafe: CafeOption }) {
+  const [current, setCurrent] = useState<string | null | undefined>(undefined); // undefined = loading
+  const [draft, setDraft] = useState<string | null>(null); // newly chosen, not yet saved
+  const [reading, setReading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/cafes/${cafe.id}`)
+      .then((r) => r.json())
+      .then((d) => alive && setCurrent(d?.coverImageUrl || null))
+      .catch(() => alive && setCurrent(null));
+    return () => {
+      alive = false;
+    };
+  }, [cafe.id]);
+
+  async function choose(file: File) {
+    setMsg(null);
+    setReading(true);
+    try {
+      setDraft(await readImageAsDataUrl(file));
+    } catch (e) {
+      setMsg({
+        ok: false,
+        text: e instanceof Error ? e.message : "Could not read this image.",
+      });
+    } finally {
+      setReading(false);
+    }
+  }
+
+  async function save(next: string | null) {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/cafes/${cafe.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ coverImageUrl: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(
+          data?.error?.message ?? `Could not save the photo (${res.status}).`,
+        );
+      setCurrent(next);
+      setDraft(null);
+      setMsg({ ok: true, text: next ? "Foto tersimpan." : "Foto dihapus." });
+    } catch (e) {
+      setMsg({
+        ok: false,
+        text: e instanceof Error ? e.message : "Could not save the photo.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const shown = draft ?? current;
+  return (
+    <div className="mb-4 rounded-2xl bg-surface p-5 shadow-soft">
+      <h2 className="mb-1 text-sm font-bold text-ink-900">
+        Cover photo — {cafe.name}
+      </h2>
+      <p className="mb-4 text-xs text-ink-400">
+        Tambah atau ganti foto cafe yang sudah ada. Tampil di card, carousel
+        Featured, dan halaman cafe.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-4">
+        {current === undefined ? (
+          <div className="flex h-24 w-36 items-center justify-center rounded-lg bg-ink-100">
+            <Loader2 size={16} className="animate-spin text-ink-400" />
+          </div>
+        ) : shown ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={shown}
+            alt="Cover"
+            className="h-24 w-36 rounded-lg object-cover ring-1 ring-ink-900/10"
+          />
+        ) : (
+          <div className="flex h-24 w-36 flex-col items-center justify-center gap-1 rounded-lg bg-ink-100 text-ink-400">
+            <ImageIcon size={20} />
+            <span className="text-[11px] font-semibold">Belum ada foto</span>
+          </div>
+        )}
+
+        <div className="flex flex-col gap-2">
+          <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-full bg-ink-100 px-3.5 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-100/70">
+            {reading ? (
+              <Loader2 size={13} className="animate-spin" />
+            ) : (
+              <Upload size={13} />
+            )}
+            {reading
+              ? "Memproses…"
+              : current || draft
+                ? "Pilih foto lain"
+                : "Upload foto"}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = ""; // so choosing the same file again still fires
+                if (f) choose(f);
+              }}
+            />
+          </label>
+
+          {draft && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => save(draft)}
+                disabled={saving}
+                className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {saving ? (
+                  <Loader2 size={13} className="animate-spin" />
+                ) : (
+                  <Check size={13} />
+                )}{" "}
+                Simpan foto
+              </button>
+              <button
+                onClick={() => setDraft(null)}
+                disabled={saving}
+                className="rounded-lg border border-ink-100 px-3 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-50"
+              >
+                Batal
+              </button>
+            </div>
+          )}
+          {!draft && current && (
+            <button
+              onClick={() => save(null)}
+              disabled={saving}
+              className="flex w-fit items-center gap-1.5 rounded-lg border border-ink-100 px-3 py-1.5 text-xs font-semibold text-ink-600 hover:bg-ink-50 disabled:opacity-50"
+            >
+              <Trash2 size={12} /> Hapus foto
+            </button>
+          )}
+          {msg && (
+            <span
+              className={
+                "text-xs font-semibold " +
+                (msg.ok ? "text-capacity-green" : "text-capacity-red")
+              }
+            >
+              {msg.text}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Super-admin-only platform controls for ONE cafe: the popularity score that
+// the landing page's "Popularity" sort ranks by, and the featured pin that
+// puts the cafe in the landing page's featured carousel. Merchants/cashiers
+// never see this — /admin itself is super_admin-only (middleware.ts) and the
+// API behind it re-checks (requireSuperAdmin).
+function RankingPanel({
+  cafe,
+  featuredCount,
+  onSaved,
+}: {
+  cafe: CafeOption;
+  featuredCount: number;
+  onSaved: () => void;
+}) {
+  // Text drafts, so the fields can be cleared and retyped freely.
+  const [score, setScore] = useState(String(cafe.popularityScore));
+  const [boosted, setBoosted] = useState(cafe.isBoosted);
+  const [tagline, setTagline] = useState(cafe.boostTagline);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const scoreNum = Number(score);
+  const scoreValid =
+    score.trim() !== "" &&
+    Number.isFinite(scoreNum) &&
+    scoreNum >= 0 &&
+    scoreNum <= 9999;
+  const dirty =
+    (scoreValid && scoreNum !== cafe.popularityScore) ||
+    boosted !== cafe.isBoosted ||
+    tagline.trim() !== cafe.boostTagline;
+
+  async function save() {
+    if (!scoreValid) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch(`/api/admin/cafes/${cafe.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          popularityScore: scoreNum,
+          isBoosted: boosted,
+          boostTagline: tagline,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error?.message ?? "Could not save.");
+      setMsg({ ok: true, text: "Tersimpan." });
+      onSaved();
+    } catch (e) {
+      setMsg({
+        ok: false,
+        text: e instanceof Error ? e.message : "Could not save.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="mb-4 rounded-2xl bg-surface p-5 shadow-soft">
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-bold text-ink-900">
+          Ranking &amp; featured — {cafe.name}
+        </h2>
+        <span className="rounded-full bg-ink-50 px-2.5 py-1 text-[11px] font-semibold text-ink-500">
+          {featuredCount} cafe featured sekarang
+        </span>
+      </div>
+      <p className="mb-4 text-xs text-ink-400">
+        Hanya super admin yang bisa mengubah ini. Berlaku di halaman utama.
+      </p>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block">
+          <span className="mb-1 block text-xs font-semibold text-ink-600">
+            Popularity score (0 – 9999)
+          </span>
+          <input
+            type="text"
+            inputMode="decimal"
+            value={score}
+            onChange={(e) => setScore(e.target.value.replace(",", "."))}
+            aria-label="Popularity score"
+            className="w-full rounded-lg border border-ink-100 bg-surface px-3 py-2 text-sm font-semibold text-ink-900 focus:border-brand-500 focus:outline-none"
+          />
+          <span className="mt-1 block text-[11px] text-ink-400">
+            Makin tinggi makin atas saat urutan "Popularity" dipilih. Saat ini{" "}
+            {cafe.popularityScore}.
+          </span>
+          {!scoreValid && (
+            <span className="mt-1 block text-[11px] font-semibold text-capacity-red">
+              Isi angka 0 sampai 9999.
+            </span>
+          )}
+        </label>
+
+        <div>
+          <span className="mb-1 block text-xs font-semibold text-ink-600">
+            Featured cafe (pin)
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={boosted}
+            onClick={() => setBoosted((v) => !v)}
+            className={
+              "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-sm font-semibold transition " +
+              (boosted
+                ? "border-brand-500 bg-brand-50 text-brand-700"
+                : "border-ink-100 text-ink-600 hover:border-ink-200")
+            }
+          >
+            <span className="flex items-center gap-2">
+              <Megaphone size={14} />{" "}
+              {boosted ? "Di-pin di Featured" : "Tidak di-pin"}
+            </span>
+            <span
+              className={
+                "relative h-5 w-9 rounded-full transition " +
+                (boosted ? "bg-brand-600" : "bg-ink-200")
+              }
+              aria-hidden
+            >
+              <span
+                className={
+                  "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all " +
+                  (boosted ? "left-[18px]" : "left-0.5")
+                }
+              />
+            </span>
+          </button>
+          <span className="mt-1 block text-[11px] text-ink-400">
+            Cafe yang di-pin tampil di carousel Featured (maks. 5, urut
+            popularity).
+          </span>
+        </div>
+      </div>
+
+      {boosted && (
+        <label className="mt-4 block">
+          <span className="mb-1 block text-xs font-semibold text-ink-600">
+            Tagline featured (opsional)
+          </span>
+          <input
+            value={tagline}
+            maxLength={140}
+            onChange={(e) => setTagline(e.target.value)}
+            placeholder="mis. Kopi susu terbaik di Dinoyo"
+            className="w-full rounded-lg border border-ink-100 bg-surface px-3 py-2 text-sm text-ink-900 focus:border-brand-500 focus:outline-none"
+          />
+        </label>
+      )}
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={saving || !dirty || !scoreValid}
+          className="flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {saving ? (
+            <Loader2 size={13} className="animate-spin" />
+          ) : (
+            <Check size={13} />
+          )}{" "}
+          Simpan
+        </button>
+        {msg && (
+          <span
+            className={
+              "text-xs font-semibold " +
+              (msg.ok ? "text-capacity-green" : "text-capacity-red")
+            }
+          >
+            {msg.text}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function NewCafeForm({ onCreated }: { onCreated: (cafeId: number) => void }) {
   const [districts, setDistricts] = useState<District[] | null>(null);
   const [name, setName] = useState("");
@@ -310,35 +690,18 @@ function NewCafeForm({ onCreated }: { onCreated: (cafeId: number) => void }) {
       });
   }, []);
 
-  // Reads the file as a base64 data: URL entirely in the browser — no server
-  // round-trip, no disk write. Deliberately NOT a fetch() to an upload API:
-  // this app is deployed on Vercel, where serverless functions get a
-  // read-only filesystem (only /tmp is writable, and it isn't persistent or
-  // shared across invocations), so writeFile()-to-disk uploads fail there at
-  // runtime. Storing the photo straight in the cover_image_url TEXT column
-  // sidesteps that entirely and works the same locally and in production.
-  const MAX_IMAGE_BYTES = 3 * 1024 * 1024; // 3MB raw — keeps /api/cafes responses reasonable once base64-encoded
-  function readCoverImage(file: File) {
+  // The photo is read (and downscaled) in the browser — see lib/readImage.ts
+  // for why this is not a server upload on Vercel.
+  async function readCoverImage(file: File) {
     setError(null);
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
-      setError("Only PNG, JPG or WEBP images are accepted.");
-      return;
-    }
-    if (file.size > MAX_IMAGE_BYTES) {
-      setError("Image is larger than 3MB.");
-      return;
-    }
     setUploadingImage(true);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCoverImageUrl(String(reader.result));
+    try {
+      setCoverImageUrl(await readImageAsDataUrl(file));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not read this image.");
+    } finally {
       setUploadingImage(false);
-    };
-    reader.onerror = () => {
-      setError("Could not read this image.");
-      setUploadingImage(false);
-    };
-    reader.readAsDataURL(file);
+    }
   }
 
   async function submit(e: React.FormEvent) {

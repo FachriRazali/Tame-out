@@ -22,7 +22,8 @@ export type ReservationStatus =
   | "no_show";
 
 export type ReservationSource = "guest" | "registered" | "walk_in";
-export type PaymentStatus = "pending" | "paid" | "expired" | "failed" | "refunded";
+export type PaymentStatus =
+  "pending" | "paid" | "expired" | "failed" | "refunded";
 export type CashierAction =
   | "check_in_qr"
   | "check_in_manual"
@@ -130,6 +131,9 @@ export interface CafeTable {
   status: TableStatus;
   currentReservationId?: number | null;
   hasPowerOutlet: boolean;
+  // How many sockets this table has (shown as "2 Stop kontak"). Only meaningful
+  // when hasPowerOutlet is true; defaults to 1.
+  powerOutletCount?: number;
 }
 
 // A polygon point as a percentage of the floor's canvasWidth/canvasHeight —

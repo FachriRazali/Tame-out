@@ -72,7 +72,7 @@ export function TableShape({
         textAnchor="middle"
         fontSize={12}
         fontWeight={700}
-        fill="#14171f"
+        className="fill-ink-900"
       >
         {table.tableCode}
       </text>
@@ -81,40 +81,51 @@ export function TableShape({
         y={(table.height * scale) / 2 + (table.hasPowerOutlet ? 7 : 12)}
         textAnchor="middle"
         fontSize={10}
-        fill="#565f72"
+        className="fill-ink-600"
       >
         {table.capacity} seats
       </text>
-      {table.hasPowerOutlet && (
-        // Minimalist power-outlet indicator — a small line-icon instead of the
-        // 🔌 emoji, which rendered inconsistently across platforms/fonts.
-        // Icon (10px) + 3px gap + label (fixed 46px via textLength, so the
-        // width doesn't depend on whichever font the browser falls back to)
-        // = 59px total, centered on the table by starting at cx - 29.5.
-        <g
-          transform={`translate(${(table.width * scale) / 2 - 29.5}, ${(table.height * scale) / 2 + 9})`}
-        >
-          <Plug size={10} color="#0f8a5f" strokeWidth={2.2} />
-          <text
-            x={13}
-            y={8.5}
-            fontSize={9}
-            fontWeight={600}
-            fill="#0f8a5f"
-            textLength={46}
-            lengthAdjust="spacingAndGlyphs"
-          >
-            Stop kontak
-          </text>
-        </g>
-      )}
+      {table.hasPowerOutlet &&
+        (() => {
+          // Minimalist power-outlet indicator — a small line-icon instead of the
+          // 🔌 emoji, which rendered inconsistently across platforms/fonts.
+          // Label is "<n> Stop kontak". Width comes from textLength (not the
+          // font), so icon (10) + gap (3) + label stays centered on the table
+          // whichever font the browser falls back to.
+          const count = Math.max(1, table.powerOutletCount ?? 1);
+          const label = `${count} Stop kontak`;
+          const labelWidth = 46 + 7 * String(count).length; // "Stop kontak" 46 + digits + space
+          const total = 13 + labelWidth;
+          return (
+            <g
+              transform={`translate(${(table.width * scale) / 2 - total / 2}, ${(table.height * scale) / 2 + 9})`}
+            >
+              <Plug
+                size={10}
+                strokeWidth={2.2}
+                className="text-capacity-green"
+              />
+              <text
+                x={13}
+                y={8.5}
+                fontSize={9}
+                fontWeight={600}
+                className="fill-capacity-green"
+                textLength={labelWidth}
+                lengthAdjust="spacingAndGlyphs"
+              >
+                {label}
+              </text>
+            </g>
+          );
+        })()}
       {selected && (
         <rect
           width={table.width * scale}
           height={table.height * scale}
           rx={isRect ? 8 : 12}
           fill="none"
-          stroke="#14171f"
+          className="stroke-ink-900"
           strokeWidth={2}
           strokeDasharray="4 3"
         />

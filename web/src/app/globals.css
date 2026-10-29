@@ -35,23 +35,73 @@
   --capacity-red-bg: #f6e0df;
 }
 
-/* Dark theme — coklat muda (light brown) */
+/* Dark theme — Tame'out dark green. Built on the brand palette's #1c2717
+   (page background), with cream #f5f5dc text and sage #839174 accents, so
+   there is no white anywhere in this theme. */
 .dark {
-  --bg: 201 166 113;
-  --surface: 228 201 154;
-  --surface-2: 181 143 92;
-  --ink-50: 241 225 190;
-  --ink-100: 220 192 145;
-  --ink-400: 122 92 57;
-  --ink-600: 91 65 40;
-  --ink-800: 58 40 24;
-  --ink-900: 42 28 15;
-  --capacity-green: 18 110 74;
-  --capacity-yellow: 150 95 9;
-  --capacity-red: 168 53 53;
-  --capacity-green-bg: rgba(255, 255, 255, 0.32);
-  --capacity-yellow-bg: rgba(255, 255, 255, 0.32);
-  --capacity-red-bg: rgba(255, 255, 255, 0.32);
+  --bg: 28 39 23; /* #1c2717 */
+  --surface: 37 51 31; /* #25331f — cards / panels, one step above the page */
+  --surface-2: 48 65 40; /* #304128 */
+  --ink-50: 28 39 23; /* page background (same as --bg) */
+  --ink-100: 58 76 50; /* borders, dividers, subtle fills */
+  --ink-400: 150 166 132; /* muted text */
+  --ink-600: 200 210 182;
+  --ink-800: 232 234 214;
+  --ink-900: 245 245 220; /* #f5f5dc cream — primary text */
+  --capacity-green: 110 214 160;
+  --capacity-yellow: 238 196 90;
+  --capacity-red: 244 128 128;
+  --capacity-green-bg: rgba(34, 192, 129, 0.16);
+  --capacity-yellow-bg: rgba(242, 167, 27, 0.16);
+  --capacity-red-bg: rgba(239, 77, 94, 0.16);
+}
+
+/* In the dark theme ink-900 flips to cream (it is the text colour), so the
+   places that use it as a SOLID DARK background (primary dark buttons,
+   active pills, toasts, price badges, modal scrims) are pinned to a deeper
+   green instead of turning cream-on-white. */
+.dark .bg-ink-900 {
+  background-color: #111a0e;
+  box-shadow: inset 0 0 0 1px rgba(245, 245, 220, 0.22);
+}
+.dark .hover\:bg-ink-800:hover {
+  background-color: #0b1109;
+}
+.dark .bg-ink-900\/50,
+.dark .bg-ink-900\/60 {
+  background-color: rgba(6, 10, 5, 0.7);
+}
+.dark .bg-ink-900\/90 {
+  background-color: rgba(17, 26, 14, 0.92);
+}
+
+/* Light sage tints (active chips, hover states) would be near-white on dark
+   green — use translucent sage instead, with a lighter sage for their text. */
+.dark .bg-brand-50,
+.dark .hover\:bg-brand-50:hover {
+  background-color: rgba(131, 145, 116, 0.18);
+}
+.dark .bg-brand-50\/60 {
+  background-color: rgba(131, 145, 116, 0.12);
+}
+.dark .bg-brand-100,
+.dark .hover\:bg-brand-100:hover {
+  background-color: rgba(131, 145, 116, 0.3);
+}
+.dark .text-brand-700,
+.dark .text-brand-600,
+.dark .hover\:text-brand-600:hover {
+  color: #cdd8bd;
+}
+.dark .ring-brand-100 {
+  --tw-ring-color: rgba(131, 145, 116, 0.35);
+}
+/* Floor-plan table labels / outlines are SVG fills, driven by ink tokens so
+   they stay readable in both themes. */
+.dark .floor-grid {
+  background-image:
+    linear-gradient(to right, rgba(245, 245, 220, 0.07) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(245, 245, 220, 0.07) 1px, transparent 1px);
 }
 
 * {
