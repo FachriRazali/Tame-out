@@ -22,6 +22,8 @@ interface Props {
   interactive?: boolean;
   onClick?: (table: CafeTable) => void;
   scale?: number;
+  // Hover/long-press text (e.g. who the table is reserved for on the cashier POS).
+  tooltip?: string;
 }
 
 export function TableShape({
@@ -30,6 +32,7 @@ export function TableShape({
   interactive = true,
   onClick,
   scale = 1,
+  tooltip,
 }: Props) {
   const fill = STATUS_FILL[table.status];
   const isRound = table.shape === "round";
@@ -43,6 +46,7 @@ export function TableShape({
       onClick={() => interactive && onClick?.(table)}
       className={clsx(interactive && "cursor-pointer")}
     >
+      {tooltip && <title>{tooltip}</title>}
       {isRound ? (
         <circle
           cx={(table.width * scale) / 2}

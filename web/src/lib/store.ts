@@ -9,6 +9,7 @@ import {
   Payment,
   PriceBucket,
   Reservation,
+  ReservationStatus,
 } from "./types";
 import { haversineDistanceKm } from "./haversine";
 import type { PoolClient } from "pg";
@@ -58,7 +59,9 @@ export async function findUserForLogin(
      FROM users u
      JOIN roles r ON r.id = u.role_id
      LEFT JOIN cafe_staff cs ON cs.user_id = u.id
-     WHERE u.email = $1 AND u.is_active = true`,
+     WHERE u.email = $1 AND u.is_active = true
+     ORDER BY cs.cafe_id
+     LIMIT 1`,
     [email],
   );
   const r = rows[0];
@@ -71,6 +74,68 @@ export async function findUserForLogin(
     role: r.role,
     cafeId: r.cafe_id ?? undefined,
   };
+}
+
+// Fresh view of a signed-in account, straight from the database — used to
+// verify a session cookie on every API call (is the account still active?
+// what is its role / cafe RIGHT NOW? has its password changed?).
+export async function loadSessionUser(
+  userId: number,
+): Promise<(UserForLogin & { passwordHash: string | null }) | undefined> {
+  const rows = await query<any>(
+    `SELECT u.id, u.full_name, u.email, u.password_hash, r.code AS role, cs.cafe_id
+     FROM users u
+     JOIN roles r ON r.id = u.role_id
+     LEFT JOIN cafe_staff cs ON cs.user_id = u.id
+     WHERE u.id = $1 AND u.is_active = true
+     ORDER BY cs.cafe_id
+     LIMIT 1`,
+    [userId],
+  );
+  const r = rows[0];
+  if (!r) return undefined;
+  return {
+    id: r.id,
+    fullName: r.full_name,
+    email: r.email,
+    passwordHash: r.password_hash,
+    role: r.role,
+    cafeId: r.cafe_id ?? undefined,
+  };
+}
+
+// Creates a customer account. Always role "customer" — staff accounts are only
+// ever created by the super admin (createStaffAccount). Throws EMAIL_TAKEN when
+// the email is already registered (email is case-insensitive, CITEXT).
+export async function registerCustomer(input: {
+  fullName: string;
+  email: string;
+  passwordHash: string;
+  whatsapp?: string;
+}): Promise<{
+  id: number;
+  fullName: string;
+  email: string;
+  passwordHash: string;
+}> {
+  try {
+    const rows = await query<any>(
+      `INSERT INTO users (role_id, full_name, email, whatsapp_number, password_hash)
+       VALUES ((SELECT id FROM roles WHERE code = 'customer'), $1, $2, $3, $4)
+       RETURNING id, full_name, email, password_hash`,
+      [input.fullName, input.email, input.whatsapp || null, input.passwordHash],
+    );
+    const r = rows[0];
+    return {
+      id: r.id,
+      fullName: r.full_name,
+      email: r.email,
+      passwordHash: r.password_hash,
+    };
+  } catch (err: any) {
+    if (err?.code === "23505") throw new Error("EMAIL_TAKEN");
+    throw err;
+  }
 }
 
 export async function touchLastLogin(userId: number): Promise<void> {
@@ -610,6 +675,10 @@ export async function getFloors(cafeId: number): Promise<Floor[]> {
 }
 
 export interface LayoutTableInput {
+  // Database id of an existing table. A table that already exists is updated in
+  // place by id, so renaming it (or moving it) keeps its history; a missing or
+  // non-positive id means "new table" (the builder's unsaved tables use negative ids).
+  id?: number;
   tableCode: string;
   shape: CafeTable["shape"];
   x: number;
@@ -650,24 +719,140 @@ export async function saveFloorLayout(
       throw new Error("FORBIDDEN");
     }
 
+    // Table codes: no blanks, no duplicates on the same floor.
+    const cleaned = tables.map((t) => ({
+      ...t,
+      tableCode: String(t.tableCode ?? "").trim(),
+    }));
+    if (cleaned.some((t) => !t.tableCode)) throw new Error("EMPTY_TABLE_CODE");
+    const seen = new Set<string>();
+    for (const t of cleaned) {
+      const key = t.tableCode.toLowerCase();
+      if (seen.has(key)) throw new Error(`DUPLICATE_TABLE_CODE:${t.tableCode}`);
+      seen.add(key);
+    }
+
     // power_outlet_count is a newer column (see database/migrations). If the
     // database hasn't been migrated yet, fall back to the original columns so
-    // saving a layout never breaks — the count simply isn't persisted until
-    // the column exists.
+    // saving a layout never breaks — but tell the caller the count was NOT
+    // stored (outletCountSaved: false) so the UI can say so.
     const hasCountCol = await hasOutletCountColumn(client);
-    for (const t of tables) {
+
+    const existingRes = await client.query(
+      `SELECT id, table_code FROM tables WHERE floor_id = $1 FOR UPDATE`,
+      [floorId],
+    );
+    const existing = new Map<number, string>(
+      existingRes.rows.map((r) => [Number(r.id), String(r.table_code)]),
+    );
+    const existingByCode = new Map<string, number>(
+      existingRes.rows.map((r) => [String(r.table_code), Number(r.id)]),
+    );
+
+    // Decide, for every incoming table, which existing row it is (if any):
+    // first by id, otherwise (older clients that send no id) by identical code.
+    const claimed = new Set<number>();
+    const plan = cleaned.map((t) => {
+      let matchId: number | undefined;
+      if (
+        t.id !== undefined &&
+        Number(t.id) > 0 &&
+        existing.has(Number(t.id)) &&
+        !claimed.has(Number(t.id))
+      )
+        matchId = Number(t.id);
+      if (matchId === undefined && !(t.id !== undefined && Number(t.id) > 0)) {
+        const byCode = existingByCode.get(t.tableCode);
+        if (byCode !== undefined && !claimed.has(byCode)) matchId = byCode;
+      }
+      if (matchId !== undefined) claimed.add(matchId);
+      return { t, matchId };
+    });
+
+    // Tables that are no longer in the layout: refuse while a guest is booked
+    // or seated at one, otherwise detach their reservation history and delete.
+    const removedIds = [...existing.keys()].filter((id) => !claimed.has(id));
+    if (removedIds.length > 0) {
+      const busy = await client.query(
+        `SELECT DISTINCT t.table_code FROM tables t
+         WHERE t.id = ANY($1::bigint[])
+           AND (t.status = 'occupied'
+                OR EXISTS (SELECT 1 FROM reservations r WHERE r.table_id = t.id
+                           AND r.status IN ('pending_payment','confirmed','checked_in') AND r.end_time > now()))`,
+        [removedIds],
+      );
+      if (busy.rows.length > 0)
+        throw new Error(
+          `TABLE_IN_USE:${busy.rows.map((r) => r.table_code).join(", ")}`,
+        );
+      await client.query(
+        `UPDATE reservations SET table_id = NULL WHERE table_id = ANY($1::bigint[])`,
+        [removedIds],
+      );
+      await client.query(`DELETE FROM tables WHERE id = ANY($1::bigint[])`, [
+        removedIds,
+      ]);
+    }
+
+    // Renames can collide mid-way (A->B while B->A). Park every renamed table
+    // on a throw-away code first, then write the final codes.
+    for (const { t, matchId } of plan) {
+      if (matchId !== undefined && existing.get(matchId) !== t.tableCode) {
+        await client.query(`UPDATE tables SET table_code = $1 WHERE id = $2`, [
+          `__renaming_${matchId}`,
+          matchId,
+        ]);
+      }
+    }
+
+    for (const { t, matchId } of plan) {
       const outletCount = t.hasPowerOutlet
         ? Math.max(1, Math.min(20, Math.round(Number(t.powerOutletCount) || 1)))
         : 1;
-      if (hasCountCol) {
+      const hasOutlet = t.hasPowerOutlet ?? false;
+      if (matchId !== undefined) {
+        if (hasCountCol) {
+          await client.query(
+            `UPDATE tables SET table_code = $1, shape = $2, pos_x = $3, pos_y = $4, width = $5, height = $6,
+                    rotation_deg = $7, capacity = $8, has_power_outlet = $9, power_outlet_count = $10
+             WHERE id = $11`,
+            [
+              t.tableCode,
+              t.shape,
+              t.x,
+              t.y,
+              t.width,
+              t.height,
+              t.rotation,
+              t.capacity,
+              hasOutlet,
+              outletCount,
+              matchId,
+            ],
+          );
+        } else {
+          await client.query(
+            `UPDATE tables SET table_code = $1, shape = $2, pos_x = $3, pos_y = $4, width = $5, height = $6,
+                    rotation_deg = $7, capacity = $8, has_power_outlet = $9
+             WHERE id = $10`,
+            [
+              t.tableCode,
+              t.shape,
+              t.x,
+              t.y,
+              t.width,
+              t.height,
+              t.rotation,
+              t.capacity,
+              hasOutlet,
+              matchId,
+            ],
+          );
+        }
+      } else if (hasCountCol) {
         await client.query(
           `INSERT INTO tables (floor_id, cafe_id, table_code, shape, pos_x, pos_y, width, height, rotation_deg, capacity, has_power_outlet, power_outlet_count)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-           ON CONFLICT (floor_id, table_code) DO UPDATE SET
-             shape = excluded.shape, pos_x = excluded.pos_x, pos_y = excluded.pos_y,
-             width = excluded.width, height = excluded.height, rotation_deg = excluded.rotation_deg,
-             capacity = excluded.capacity, has_power_outlet = excluded.has_power_outlet,
-             power_outlet_count = excluded.power_outlet_count`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [
             floorId,
             floor.cafe_id,
@@ -679,18 +864,14 @@ export async function saveFloorLayout(
             t.height,
             t.rotation,
             t.capacity,
-            t.hasPowerOutlet ?? false,
+            hasOutlet,
             outletCount,
           ],
         );
       } else {
         await client.query(
           `INSERT INTO tables (floor_id, cafe_id, table_code, shape, pos_x, pos_y, width, height, rotation_deg, capacity, has_power_outlet)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-           ON CONFLICT (floor_id, table_code) DO UPDATE SET
-             shape = excluded.shape, pos_x = excluded.pos_x, pos_y = excluded.pos_y,
-             width = excluded.width, height = excluded.height, rotation_deg = excluded.rotation_deg,
-             capacity = excluded.capacity, has_power_outlet = excluded.has_power_outlet`,
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
           [
             floorId,
             floor.cafe_id,
@@ -702,16 +883,11 @@ export async function saveFloorLayout(
             t.height,
             t.rotation,
             t.capacity,
-            t.hasPowerOutlet ?? false,
+            hasOutlet,
           ],
         );
       }
     }
-    const keepCodes = tables.map((t) => t.tableCode);
-    await client.query(
-      `DELETE FROM tables WHERE floor_id = $1 AND NOT (table_code = ANY($2::text[]))`,
-      [floorId, keepCodes.length ? keepCodes : [""]],
-    );
 
     const tableRows = await client.query(
       `SELECT id AS table_id, floor_id, cafe_id, table_code, shape, pos_x, pos_y, width, height, rotation_deg, capacity, status, has_power_outlet,
@@ -719,7 +895,11 @@ export async function saveFloorLayout(
        FROM tables WHERE floor_id = $1 ORDER BY id`,
       [floorId],
     );
-    return { id: floorId, tables: tableRows.rows.map(mapTableRow) };
+    return {
+      id: floorId,
+      tables: tableRows.rows.map(mapTableRow),
+      outletCountSaved: hasCountCol,
+    };
   });
 }
 
@@ -1067,7 +1247,6 @@ export interface CreateReservationInput {
   cafeId: number;
   tableId: number;
   partySize: number;
-  slotMinutes: number;
   startTime: string;
   guestName?: string;
   guestWhatsapp?: string;
@@ -1085,14 +1264,22 @@ export async function createReservation(input: CreateReservationInput) {
     if (table.status !== "available") throw new Error("TABLE_ALREADY_RESERVED");
 
     const cafeRes = await client.query(
-      `SELECT requires_down_payment, dp_amount, dp_hold_minutes FROM cafes WHERE id = $1`,
+      `SELECT requires_down_payment, dp_amount, dp_hold_minutes, default_slot_minutes FROM cafes WHERE id = $1`,
       [table.cafe_id],
     );
     const cafe = cafeRes.rows[0];
     if (!cafe) throw new Error("NOT_FOUND");
 
+    // The customer no longer picks a duration: every booking uses the cafe's
+    // own default slot length, so a browser can't ask for a 5-minute or
+    // 5-day slot.
+    const slotMinutes =
+      Number(cafe.default_slot_minutes) > 0
+        ? Number(cafe.default_slot_minutes)
+        : 90;
     const start = new Date(input.startTime);
-    const end = new Date(start.getTime() + input.slotMinutes * 60_000);
+    if (Number.isNaN(start.getTime())) throw new Error("INVALID_TIME");
+    const end = new Date(start.getTime() + slotMinutes * 60_000);
     const status = cafe.requires_down_payment ? "pending_payment" : "confirmed";
     const holdExpiresAt = cafe.requires_down_payment
       ? new Date(Date.now() + cafe.dp_hold_minutes * 60_000)
@@ -1113,7 +1300,7 @@ export async function createReservation(input: CreateReservationInput) {
           input.guestName ?? null,
           input.guestWhatsapp ?? null,
           input.partySize,
-          input.slotMinutes,
+          slotMinutes,
           start.toISOString(),
           end.toISOString(),
           status,
@@ -1193,6 +1380,127 @@ export async function getReservation(id: number) {
   return rows[0] ? mapReservationRow(rows[0]) : undefined;
 }
 
+export interface MyReservation {
+  id: number;
+  reservationCode: string;
+  cafeId: number;
+  cafeName: string;
+  tableCode: string | null;
+  partySize: number;
+  startTime: string;
+  endTime: string;
+  status: ReservationStatus;
+  paymentHoldExpiresAt: string | null;
+  downPayment: { amount: number; status: string } | null;
+  cancelledAt: string | null;
+}
+
+// Every reservation made while signed in as this customer, newest first.
+// Strictly "WHERE user_id = me" — reservations made as a guest have no
+// account behind them and never show up here.
+export async function listReservationsForUser(
+  userId: number,
+): Promise<MyReservation[]> {
+  const rows = await query<any>(
+    `SELECT r.id, r.reservation_code, r.cafe_id, c.name AS cafe_name, t.table_code,
+            r.party_size, r.start_time, r.end_time, r.status,
+            r.payment_hold_expires_at, r.cancelled_at,
+            p.amount AS dp_amount, p.status AS dp_status
+     FROM reservations r
+     JOIN cafes c ON c.id = r.cafe_id
+     LEFT JOIN tables t ON t.id = r.table_id
+     LEFT JOIN LATERAL (
+       SELECT amount, status FROM payments
+       WHERE reservation_id = r.id AND type = 'down_payment'
+       ORDER BY id DESC LIMIT 1
+     ) p ON true
+     WHERE r.user_id = $1
+     ORDER BY r.start_time DESC, r.id DESC
+     LIMIT 200`,
+    [userId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    reservationCode: r.reservation_code,
+    cafeId: r.cafe_id,
+    cafeName: r.cafe_name,
+    tableCode: r.table_code ?? null,
+    partySize: r.party_size,
+    startTime: new Date(r.start_time).toISOString(),
+    endTime: new Date(r.end_time).toISOString(),
+    status: r.status,
+    paymentHoldExpiresAt: r.payment_hold_expires_at
+      ? new Date(r.payment_hold_expires_at).toISOString()
+      : null,
+    downPayment: r.dp_status
+      ? { amount: Number(r.dp_amount), status: r.dp_status }
+      : null,
+    cancelledAt: r.cancelled_at ? new Date(r.cancelled_at).toISOString() : null,
+  }));
+}
+
+export interface CafeReservationRow {
+  id: number;
+  reservationCode: string;
+  guestName: string;
+  guestWhatsapp: string | null;
+  source: string;
+  tableCode: string | null;
+  partySize: number;
+  startTime: string;
+  endTime: string;
+  status: ReservationStatus;
+  paymentHoldExpiresAt: string | null;
+  downPayment: { amount: number; status: string } | null;
+}
+
+// Reservations of ONE cafe whose slot starts in [from, to) — the cashier's
+// reservation history / daily summary. Guest name comes from the booking
+// itself, or from the customer's account when they booked while signed in.
+export async function listReservationsForCafe(
+  cafeId: number,
+  from: Date,
+  to: Date,
+): Promise<CafeReservationRow[]> {
+  const rows = await query<any>(
+    `SELECT r.id, r.reservation_code, r.source, r.party_size, r.start_time, r.end_time, r.status,
+            r.payment_hold_expires_at, t.table_code,
+            COALESCE(r.guest_name, u.full_name, 'Registered guest') AS guest_name,
+            COALESCE(r.guest_whatsapp, u.whatsapp_number) AS guest_whatsapp,
+            p.amount AS dp_amount, p.status AS dp_status
+     FROM reservations r
+     LEFT JOIN users u ON u.id = r.user_id
+     LEFT JOIN tables t ON t.id = r.table_id
+     LEFT JOIN LATERAL (
+       SELECT amount, status FROM payments
+       WHERE reservation_id = r.id AND type = 'down_payment'
+       ORDER BY id DESC LIMIT 1
+     ) p ON true
+     WHERE r.cafe_id = $1 AND r.start_time >= $2 AND r.start_time < $3
+     ORDER BY r.start_time ASC, r.id ASC
+     LIMIT 500`,
+    [cafeId, from.toISOString(), to.toISOString()],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    reservationCode: r.reservation_code,
+    guestName: r.guest_name,
+    guestWhatsapp: r.guest_whatsapp ?? null,
+    source: r.source,
+    tableCode: r.table_code ?? null,
+    partySize: r.party_size,
+    startTime: new Date(r.start_time).toISOString(),
+    endTime: new Date(r.end_time).toISOString(),
+    status: r.status,
+    paymentHoldExpiresAt: r.payment_hold_expires_at
+      ? new Date(r.payment_hold_expires_at).toISOString()
+      : null,
+    downPayment: r.dp_status
+      ? { amount: Number(r.dp_amount), status: r.dp_status }
+      : null,
+  }));
+}
+
 export async function getReservationByCode(code: string) {
   const rows = await query<any>(
     `SELECT * FROM reservations WHERE reservation_code = $1`,
@@ -1201,25 +1509,40 @@ export async function getReservationByCode(code: string) {
   return rows[0] ? mapReservationRow(rows[0]) : undefined;
 }
 
-export async function getReservationByToken(token: string) {
-  const rows = await query<any>(
-    `SELECT * FROM reservations WHERE qr_code_token = $1`,
-    [token],
-  );
-  return rows[0] ? mapReservationRow(rows[0]) : undefined;
-}
-
+// Cancels a reservation that has not started yet (waiting for payment, or
+// confirmed). Refuses anything else — checked-in guests are checked OUT by the
+// cashier, and cancelling twice must not do anything. The table is only
+// released if it is still "reserved": a table that is occupied (someone is
+// seated) or under maintenance is never flipped back to "available" here.
 export async function cancelReservation(id: number) {
-  const rows = await query<any>(
-    `UPDATE reservations SET status = 'cancelled', cancelled_at = now() WHERE id = $1 RETURNING *`,
-    [id],
-  );
-  if (!rows[0]) throw new Error("NOT_FOUND");
-  const reservation = mapReservationRow(rows[0]);
-  if (reservation.tableId)
-    await query(`UPDATE tables SET status = 'available' WHERE id = $1`, [
-      reservation.tableId,
-    ]);
+  const reservation = await withTransaction(async (client) => {
+    const found = await client.query(
+      `SELECT * FROM reservations WHERE id = $1 FOR UPDATE`,
+      [id],
+    );
+    const row = found.rows[0];
+    if (!row) throw new Error("NOT_FOUND");
+    if (row.status !== "pending_payment" && row.status !== "confirmed")
+      throw new Error("INVALID_STATE");
+
+    const updated = await client.query(
+      `UPDATE reservations SET status = 'cancelled', cancelled_at = now() WHERE id = $1 RETURNING *`,
+      [id],
+    );
+    if (row.table_id) {
+      await client.query(
+        `UPDATE tables SET status = 'available' WHERE id = $1 AND status = 'reserved'`,
+        [row.table_id],
+      );
+    }
+    // A DP that was never paid is no longer payable. (A DP that WAS paid is left
+    // alone — refunds are a business decision, not an automatic side effect.)
+    await client.query(
+      `UPDATE payments SET status = 'expired' WHERE reservation_id = $1 AND status = 'pending'`,
+      [id],
+    );
+    return mapReservationRow(updated.rows[0]);
+  });
   await logNotification(reservation, "cancellation");
   return reservation;
 }
@@ -1229,7 +1552,7 @@ async function logNotification(
   type: "qr_ticket" | "reminder_h1" | "cancellation" | "checked_in",
 ) {
   const messages: Record<string, string> = {
-    qr_ticket: `Your table is booked! Show this QR at ${reservation.reservationCode} check-in.`,
+    qr_ticket: `Your table is booked! Show reservation code ${reservation.reservationCode} to the cashier at check-in.`,
     reminder_h1: `Reminder: your reservation ${reservation.reservationCode} starts in 1 hour.`,
     cancellation: `Reservation ${reservation.reservationCode} has been cancelled.`,
     checked_in: `You're checked in — enjoy! (${reservation.reservationCode})`,
@@ -1247,17 +1570,29 @@ async function logNotification(
   );
 }
 
+// Notification log, newest first. Pass cafeId to see only that cafe's
+// notifications (cashier / merchant / admin); omit it for the platform-wide
+// view (super admin). Includes the booking code and guest name so the cashier
+// can tell which reservation a message was about.
 export async function getNotificationLogs(
-  limit = 20,
+  limit = 30,
+  cafeId?: number,
 ): Promise<NotificationLogEntry[]> {
   const rows = await query<any>(
-    `SELECT id, reservation_id, channel, type, recipient, status, created_at, payload
-     FROM notification_logs ORDER BY created_at DESC LIMIT $1`,
-    [limit],
+    `SELECT n.id, n.reservation_id, n.channel, n.type, n.recipient, n.status, n.created_at, n.payload,
+            r.reservation_code, r.guest_name
+     FROM notification_logs n
+     LEFT JOIN reservations r ON r.id = n.reservation_id
+     WHERE ($2::bigint IS NULL OR r.cafe_id = $2)
+     ORDER BY n.created_at DESC, n.id DESC
+     LIMIT $1`,
+    [Math.max(1, Math.min(100, limit)), cafeId ?? null],
   );
   return rows.map((r) => ({
     id: r.id,
     reservationId: r.reservation_id,
+    reservationCode: r.reservation_code ?? undefined,
+    guestName: r.guest_name ?? undefined,
     channel: r.channel,
     type: r.type,
     recipient: r.recipient,
@@ -1270,10 +1605,41 @@ export async function getNotificationLogs(
 // ---------------------------------------------------------------------------
 // Cashier POS
 // ---------------------------------------------------------------------------
+export interface PosFloor {
+  id: number;
+  name: string;
+  zoneType: Floor["zoneType"];
+  level: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  outlinePoints: Floor["outlinePoints"];
+}
+
+// The cafe's floors (without tables) in the same order the floor plan shows
+// them — the cashier POS draws each floor/zone with the tables from posListTables.
+export async function posListFloors(cafeId: number): Promise<PosFloor[]> {
+  const rows = await query<any>(
+    `SELECT id, name, zone_type, level, canvas_width, canvas_height, outline_points
+     FROM floors WHERE cafe_id = $1 AND is_active = true
+     ORDER BY level, sort_order, id`,
+    [cafeId],
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    zoneType: r.zone_type,
+    level: r.level,
+    canvasWidth: r.canvas_width,
+    canvasHeight: r.canvas_height,
+    outlinePoints: r.outline_points ?? null,
+  }));
+}
+
 export async function posListTables(cafeId: number) {
   const rows = await query<any>(
     `SELECT t.id AS table_id, t.floor_id, t.cafe_id, t.table_code, t.shape, t.pos_x, t.pos_y, t.width, t.height,
-            t.rotation_deg, t.capacity, t.status,
+            t.rotation_deg, t.capacity, t.status, t.has_power_outlet,
+            to_jsonb(t) ->> 'power_outlet_count' AS power_outlet_count,
             r.id AS res_id, r.reservation_code AS res_reservation_code, r.user_id AS res_user_id, r.source AS res_source,
             r.guest_name AS res_guest_name, r.guest_whatsapp AS res_guest_whatsapp, r.party_size AS res_party_size,
             r.slot_minutes AS res_slot_minutes, r.start_time AS res_start_time, r.end_time AS res_end_time,

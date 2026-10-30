@@ -4,6 +4,7 @@ import { TableShape } from "@/lib/types";
 import { requireStaffSession, scopedCafeId } from "@/lib/staffAuth";
 
 interface LayoutTableInput {
+  id?: number;
   tableCode: string;
   shape: TableShape;
   x: number;
@@ -35,6 +36,7 @@ export async function PUT(
     const floor = await saveFloorLayout(
       floorId,
       body.tables.map((t) => ({
+        id: t.id,
         tableCode: t.tableCode,
         shape: t.shape,
         x: t.x,
@@ -91,6 +93,7 @@ export async function PUT(
       floorId: floor.id,
       tables: floor.tables,
       outlinePoints,
+      outletCountSaved: floor.outletCountSaved,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : "UNKNOWN";
@@ -104,6 +107,42 @@ export async function PUT(
           },
         },
         { status: 403 },
+      );
+    }
+    if (message === "EMPTY_TABLE_CODE") {
+      return NextResponse.json(
+        {
+          error: {
+            code: message,
+            message: "Ada meja yang kodenya kosong. Isi nama/kode meja dulu.",
+            status: 400,
+          },
+        },
+        { status: 400 },
+      );
+    }
+    if (message.startsWith("DUPLICATE_TABLE_CODE:")) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "DUPLICATE_TABLE_CODE",
+            message: `Kode meja "${message.slice("DUPLICATE_TABLE_CODE:".length)}" dipakai dua kali di zona ini. Kode meja harus beda.`,
+            status: 409,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    if (message.startsWith("TABLE_IN_USE:")) {
+      return NextResponse.json(
+        {
+          error: {
+            code: "TABLE_IN_USE",
+            message: `Meja ${message.slice("TABLE_IN_USE:".length)} masih dipesan atau sedang ditempati, jadi belum bisa dihapus.`,
+            status: 409,
+          },
+        },
+        { status: 409 },
       );
     }
     throw e;

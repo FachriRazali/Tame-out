@@ -41,7 +41,7 @@ export function AdsCarousel() {
   return (
     <div className="relative mx-auto max-w-5xl overflow-hidden rounded-2xl shadow-card ring-1 ring-ink-900/5">
       <Link href={`/cafe/${cafe.id}`} className="group block">
-        <div className="relative h-32 w-full overflow-hidden sm:h-40">
+        <div className="relative h-36 w-full overflow-hidden sm:h-44">
           {/* Brand-green backdrop: a pinned cafe without a cover photo (or a photo that
               fails to load) still shows its card instead of a broken image. */}
           <div className="absolute inset-0 bg-gradient-to-br from-brand-900 to-brand-700" />
@@ -58,7 +58,13 @@ export function AdsCarousel() {
           )}
           <div className="absolute inset-0 bg-gradient-to-r from-ink-950/80 via-ink-950/40 to-transparent" />
 
-          <div className="absolute inset-y-0 left-0 flex max-w-[80%] flex-col justify-center gap-1 px-5 text-white sm:max-w-[65%] sm:px-6">
+          {/* With several featured cafes the prev/next arrows sit at the card's edges —
+              keep the text well clear of them (pl-14 = arrow width + a comfortable gap). */}
+          <div
+            className={`absolute inset-y-0 left-0 flex max-w-[85%] flex-col justify-center gap-1.5 pb-4 pt-2 text-white sm:max-w-[65%] ${
+              cafes.length > 1 ? "pl-14 pr-4 sm:pl-16" : "px-5 sm:px-6"
+            }`}
+          >
             <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide backdrop-blur">
               <Megaphone size={12} /> Featured
             </span>
@@ -82,7 +88,7 @@ export function AdsCarousel() {
               go(-1);
             }}
             aria-label="Previous featured cafe"
-            className="absolute left-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-white transition hover:bg-black/50"
+            className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-white transition hover:bg-black/50"
           >
             <ChevronLeft size={16} />
           </button>
@@ -92,12 +98,12 @@ export function AdsCarousel() {
               go(1);
             }}
             aria-label="Next featured cafe"
-            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-white transition hover:bg-black/50"
+            className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/30 text-white transition hover:bg-black/50"
           >
             <ChevronRight size={16} />
           </button>
 
-          <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1.5">
+          <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-1.5">
             {cafes.map((c, i) => (
               <button
                 key={c.id}

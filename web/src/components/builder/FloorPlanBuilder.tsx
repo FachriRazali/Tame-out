@@ -63,6 +63,9 @@ export function FloorPlanBuilder({
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [creatingZone, setCreatingZone] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  // Shown after a save that worked but could not store everything (e.g. the
+  // database has no power_outlet_count column yet).
+  const [warnMsg, setWarnMsg] = useState<string | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragState = useRef<{
     id: number;
@@ -362,6 +365,7 @@ export function FloorPlanBuilder({
     if (!activeFloor) return;
     setSaving(true);
     setErrorMsg(null);
+    setWarnMsg(null);
     try {
       const res = await apiFetch(
         `/api/merchant/floors/${activeFloor.id}/layout`,
@@ -380,6 +384,32 @@ export function FloorPlanBuilder({
             "Could not save this layout. Please try again.",
           ),
         );
+      const saved: { tables?: CafeTable[]; outletCountSaved?: boolean } =
+        await res.json().catch(() => ({}));
+      // Give the tables their real database ids (matched by code), so the next
+      // save updates them in place instead of treating them as new tables.
+      if (saved.tables) {
+        const byCode = new Map(saved.tables.map((t) => [t.tableCode, t.id]));
+        updateFloor(activeFloor.id, (f) => ({
+          ...f,
+          tables: f.tables.map((t) => {
+            const realId = byCode.get(t.tableCode.trim());
+            return realId !== undefined && realId !== t.id
+              ? { ...t, id: realId }
+              : t;
+          }),
+        }));
+        if (selectedTableId !== null && selectedTable) {
+          const realId = byCode.get(selectedTable.tableCode.trim());
+          if (realId !== undefined) setSelectedTableId(realId);
+        }
+      }
+      const usesOutlets = activeFloor.tables.some((t) => t.hasPowerOutlet);
+      setWarnMsg(
+        saved.outletCountSaved === false && usesOutlets
+          ? "Layout tersimpan, tapi JUMLAH stop kontak belum bisa disimpan: database belum punya kolom power_outlet_count. Jalankan di Neon: ALTER TABLE tables ADD COLUMN IF NOT EXISTS power_outlet_count SMALLINT NOT NULL DEFAULT 1;"
+          : null,
+      );
       setSavedAt(new Date());
     } catch (e) {
       setErrorMsg(friendlyNetworkError(e, "Could not save this layout."));
@@ -981,6 +1011,14 @@ export function FloorPlanBuilder({
             Layout tersimpan pukul {savedAt.toLocaleTimeString()}
           </p>
         )}
+        {warnMsg && (
+          <p
+            role="alert"
+            className="mt-2 rounded-lg bg-capacity-yellowBg px-3 py-2 text-xs font-semibold text-capacity-yellow"
+          >
+            {warnMsg}
+          </p>
+        )}
       </div>
 
       {/* Right: properties */}
@@ -1153,7 +1191,9 @@ async function describeFailure(
 
 function layoutPayload(tables: CafeTable[]) {
   return tables.map((t) => ({
-    tableCode: t.tableCode,
+    // Existing tables carry their database id; unsaved ones have a negative temp id.
+    id: t.id > 0 ? t.id : undefined,
+    tableCode: t.tableCode.trim(),
     shape: t.shape,
     x: t.x,
     y: t.y,

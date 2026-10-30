@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { LogIn, UserRound } from "@/components/ui/icons";
+import { History, LogIn, UserRound } from "@/components/ui/icons";
 
 interface SessionUser {
   id: number;
@@ -38,18 +38,29 @@ export function AuthStatus() {
         href="/login"
         className="flex items-center gap-1.5 rounded-full bg-ink-100 px-3 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-200"
       >
-        <LogIn size={13} /> Staff login
+        <LogIn size={13} /> Sign in
       </Link>
     );
   }
 
   return (
-    <button
-      onClick={logout}
-      title="Sign out"
-      className="flex items-center gap-1.5 rounded-full bg-ink-100 px-3 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-200"
-    >
-      <UserRound size={13} /> {user.fullName} · {user.role} · Sign out
-    </button>
+    <>
+      {/* Reservation history is a customer feature — staff don't see the link. */}
+      {user.role === "customer" && (
+        <Link
+          href="/reservations"
+          className="flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-brand-700"
+        >
+          <History size={13} /> My reservations
+        </Link>
+      )}
+      <button
+        onClick={logout}
+        title="Sign out"
+        className="flex items-center gap-1.5 rounded-full bg-ink-100 px-3 py-2 text-xs font-semibold text-ink-600 hover:bg-ink-200"
+      >
+        <UserRound size={13} /> {user.fullName} · {user.role} · Sign out
+      </button>
+    </>
   );
 }

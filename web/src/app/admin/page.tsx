@@ -936,7 +936,7 @@ function NewStaffForm({
         <input
           required
           type="password"
-          placeholder="Password (6+ chars)"
+          placeholder="Password (10+ chars)"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="rounded-lg border border-ink-100 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none sm:col-span-1"

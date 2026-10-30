@@ -244,7 +244,7 @@ export function CafeGallery({
               type="button"
               disabled={!!busy || photos.length >= max}
               onClick={() => fileRef.current?.click()}
-              className="flex items-center gap-1.5 rounded-full bg-brand-500 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-full bg-brand-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-brand-600 disabled:opacity-50"
             >
               <Plus size={13} /> Tambah foto
             </button>
@@ -336,7 +336,7 @@ export function CafeGallery({
                   />
                   <button
                     type="submit"
-                    className="rounded-lg bg-brand-500 px-2 text-xs font-bold text-white"
+                    className="rounded-lg bg-brand-600 px-2 text-xs font-bold text-white"
                   >
                     OK
                   </button>

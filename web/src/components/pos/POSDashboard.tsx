@@ -3,27 +3,26 @@
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { usePolling } from "@/lib/usePolling";
-import { CafeTable, Reservation, TableStatus } from "@/lib/types";
-import { STATUS_FILL, STATUS_LABEL } from "@/components/floorplan/TableShape";
+import { STATUS_LABEL } from "@/components/floorplan/TableShape";
+import type { PosFloor } from "@/lib/store";
+import { PosFloorPlan, PosTable } from "@/components/pos/PosFloorPlan";
 import { CapacityBadge } from "@/components/ui/CapacityBadge";
+import { NotificationLog } from "@/components/pos/NotificationLog";
+import { ReservationHistory } from "@/components/pos/ReservationHistory";
 import {
   CalendarPlus,
   CircleCheck,
   Loader2,
   LogIn,
-  QrCode,
-  ScanLine,
   Users,
   Wrench,
   X,
 } from "@/components/ui/icons";
 
-type PosTable = CafeTable & { reservation?: Reservation };
-
 export function POSDashboard({ cafeId }: { cafeId: number }) {
   const [tables, setTables] = useState<PosTable[]>([]);
+  const [floors, setFloors] = useState<PosFloor[]>([]);
   const [selected, setSelected] = useState<PosTable | null>(null);
-  const [scannerOpen, setScannerOpen] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   // Which table's "Reserve" form is open in the modal (available tables only).
@@ -33,6 +32,7 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
     const res = await fetch(`/api/pos/cafes/${cafeId}/tables`);
     const data = await res.json();
     setTables(data.data);
+    setFloors(data.floors ?? []);
   }
 
   useEffect(() => {
@@ -98,47 +98,21 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
             {summary.occupied} occupied
           </span>
         </div>
-        <button
-          onClick={() => setScannerOpen(true)}
-          className="flex items-center gap-2 rounded-xl bg-ink-900 px-4 py-2.5 text-sm font-bold text-white hover:bg-ink-800"
-        >
-          <ScanLine size={16} /> Scan QR Check-in
-        </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-        {tables.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => {
-              setSelected(t);
-              setReserving(false);
-            }}
-            className="rounded-2xl border-2 bg-surface p-3 text-left shadow-soft transition hover:-translate-y-0.5 hover:shadow-card"
-            style={{ borderColor: STATUS_FILL[t.status] }}
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-extrabold text-ink-900">
-                {t.tableCode}
-              </span>
-              <span
-                className="rounded-full px-2 py-0.5 text-[10px] font-bold text-white"
-                style={{ backgroundColor: STATUS_FILL[t.status] }}
-              >
-                {STATUS_LABEL[t.status]}
-              </span>
-            </div>
-            <p className="mt-2 flex items-center gap-1 text-xs text-ink-500">
-              <Users size={12} /> {t.capacity} seats
-            </p>
-            {t.reservation && (
-              <p className="mt-1 truncate text-xs font-semibold text-ink-700">
-                {t.reservation.guestName ?? "Registered guest"}
-              </p>
-            )}
-          </button>
-        ))}
-      </div>
+      <PosFloorPlan
+        floors={floors}
+        tables={tables}
+        selectedTableId={selected?.id}
+        onSelectTable={(t) => {
+          setSelected(t);
+          setReserving(false);
+        }}
+      />
+
+      <ReservationHistory cafeId={cafeId} />
+
+      <NotificationLog cafeId={cafeId} />
 
       {selected && (
         <div
@@ -265,16 +239,6 @@ export function POSDashboard({ cafeId }: { cafeId: number }) {
             </div>
           </div>
         </div>
-      )}
-
-      {scannerOpen && (
-        <ScannerModal
-          onClose={() => setScannerOpen(false)}
-          onSuccess={(msg) => {
-            setToast(msg);
-            refresh();
-          }}
-        />
       )}
 
       {toast && (
@@ -495,84 +459,5 @@ function ActionButton({
       {busy ? <Loader2 size={15} className="animate-spin" /> : icon}
       {label}
     </button>
-  );
-}
-
-function ScannerModal({
-  onClose,
-  onSuccess,
-}: {
-  onClose: () => void;
-  onSuccess: (msg: string) => void;
-}) {
-  const [token, setToken] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  async function submit(payload: string) {
-    setLoading(true);
-    setError(null);
-    const res = await fetch("/api/pos/checkin", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ qrPayload: payload }),
-    });
-    const data = await res.json();
-    setLoading(false);
-    if (!res.ok) {
-      setError(data.error?.message ?? "Ticket not recognized.");
-      return;
-    }
-    onSuccess(`Checked in table ${data.table.tableCode} via QR`);
-    onClose();
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-900/60 p-4">
-      <div className="w-full max-w-sm rounded-2xl bg-surface p-5 shadow-floating">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-lg font-bold text-ink-900">
-            <QrCode size={18} /> Scan ticket
-          </h3>
-          <button
-            onClick={onClose}
-            className="rounded-full p-1.5 text-ink-400 hover:bg-ink-100"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="mb-4 flex h-40 items-center justify-center rounded-xl border-2 border-dashed border-brand-300 bg-brand-50/60">
-          <ScanLine size={40} className="animate-pulse-soft text-brand-500" />
-        </div>
-        <p className="mb-3 text-center text-xs text-ink-400">
-          Camera simulation — paste or type the guest's ticket token below.
-        </p>
-
-        <input
-          value={token}
-          onChange={(e) => setToken(e.target.value)}
-          placeholder="e.g. 9012-a1b2c3d4"
-          className="mb-2 w-full rounded-lg border border-ink-100 px-3 py-2.5 text-sm focus:border-brand-500 focus:outline-none"
-        />
-        {error && (
-          <p className="mb-2 text-xs font-semibold text-capacity-red">
-            {error}
-          </p>
-        )}
-        <button
-          onClick={() => submit(token)}
-          disabled={!token || loading}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-600 py-2.5 text-sm font-bold text-white hover:bg-brand-700 disabled:opacity-50"
-        >
-          {loading ? (
-            <Loader2 size={15} className="animate-spin" />
-          ) : (
-            <CircleCheck size={15} />
-          )}
-          Confirm check-in
-        </button>
-      </div>
-    </div>
   );
 }

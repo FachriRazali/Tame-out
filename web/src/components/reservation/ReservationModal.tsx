@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Cafe, CafeTable } from "@/lib/types";
 import { useCountdown } from "./useCountdown";
-import { QrTicket } from "./QrTicket";
 import {
   X,
   Users,
@@ -13,7 +13,6 @@ import {
   UserRound,
   LogIn,
   Wallet,
-  QrCode,
   CircleCheck,
   Bell,
   Loader2,
@@ -33,14 +32,12 @@ interface ReservationResult {
   reservationId: number;
   reservationCode: string;
   status: string;
-  qrCodeToken: string;
   payment: { id: number; amount: number; currency: string; holdExpiresAt: string } | null;
 }
 
 export function ReservationModal({ cafe, table, onClose }: { cafe: Cafe; table: CafeTable; onClose: () => void }) {
   const [step, setStep] = useState<Step>("details");
   const [partySize, setPartySize] = useState(Math.min(2, table.capacity));
-  const [slotMinutes, setSlotMinutes] = useState<90 | 120>(cafe.defaultSlotMinutes === 120 ? 120 : 90);
   const [startHour, setStartHour] = useState(() => {
     const now = new Date();
     now.setMinutes(0, 0, 0);
@@ -56,11 +53,17 @@ export function ReservationModal({ cafe, table, onClose }: { cafe: Cafe; table: 
   const [paying, setPaying] = useState(false);
   const [notified, setNotified] = useState(false);
   const [session, setSession] = useState<SessionUser | null | undefined>(undefined); // undefined = still loading
+  const pathname = usePathname();
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => setSession(d.user ?? null))
+      .then((d) => {
+        setSession(d.user ?? null);
+        // Someone who is already signed in books under their account by default,
+        // so the reservation shows up in "My reservations".
+        if (d.user) setMode("registered");
+      })
       .catch(() => setSession(null));
   }, []);
 
@@ -77,7 +80,6 @@ export function ReservationModal({ cafe, table, onClose }: { cafe: Cafe; table: 
           cafeId: cafe.id,
           tableId: table.id,
           partySize,
-          slotMinutes,
           startTime: startHour.toISOString(),
           guest: mode === "guest" ? { name, whatsapp } : undefined,
           userId: mode === "registered" ? session?.id : undefined
@@ -153,19 +155,6 @@ export function ReservationModal({ cafe, table, onClose }: { cafe: Cafe; table: 
                       }}
                       className="rounded-lg border border-ink-100 px-3 py-2 text-sm font-semibold text-ink-900"
                     />
-                    <div className="flex overflow-hidden rounded-lg border border-ink-100 text-sm font-semibold">
-                      {[90, 120].map((m) => (
-                        <button
-                          key={m}
-                          onClick={() => setSlotMinutes(m as 90 | 120)}
-                          className={
-                            slotMinutes === m ? "bg-ink-900 px-3 py-2 text-white" : "bg-surface px-3 py-2 text-ink-600 hover:bg-ink-50"
-                          }
-                        >
-                          {m} min
-                        </button>
-                      ))}
-                    </div>
                   </div>
                   <p className="mt-1.5 text-xs text-ink-400">
                     Auto-cancelled if you don't check in within {cafe.gracePeriodMinutes} minutes of your slot.
@@ -197,7 +186,7 @@ export function ReservationModal({ cafe, table, onClose }: { cafe: Cafe; table: 
                   <div className="space-y-3">
                     <LabeledInput label="Full name" value={name} onChange={setName} placeholder="Bunga Larasati" />
                     <LabeledInput label="WhatsApp number" value={whatsapp} onChange={setWhatsapp} placeholder="+62 812 xxxx xxxx" />
-                    <p className="text-xs text-ink-400">Your QR ticket and reminder will be sent to this WhatsApp number.</p>
+                    <p className="text-xs text-ink-400">Your booking confirmation and reminder will be sent to this WhatsApp number.</p>
                   </div>
                 ) : session === undefined ? (
                   <div className="rounded-xl border border-dashed border-ink-100 bg-ink-50/60 p-4 text-center text-sm text-ink-400">
@@ -210,9 +199,20 @@ export function ReservationModal({ cafe, table, onClose }: { cafe: Cafe; table: 
                 ) : (
                   <div className="rounded-xl border border-dashed border-ink-100 bg-ink-50/60 p-4 text-center text-sm text-ink-600">
                     <p className="mb-2">You're not signed in.</p>
-                    <Link href="/login" className="font-semibold text-brand-600 hover:underline">
-                      Go to login →
-                    </Link>
+                    <div className="flex items-center justify-center gap-4">
+                      <Link
+                        href={`/login?next=${encodeURIComponent(pathname || "/")}`}
+                        className="font-semibold text-brand-600 hover:underline"
+                      >
+                        Sign in →
+                      </Link>
+                      <Link
+                        href={`/login?mode=register&next=${encodeURIComponent(pathname || "/")}`}
+                        className="font-semibold text-brand-600 hover:underline"
+                      >
+                        Create account →
+                      </Link>
+                    </div>
                     <p className="mt-2 text-xs text-ink-400">Or switch to the Guest tab — no account needed.</p>
                   </div>
                 )}
@@ -283,11 +283,14 @@ export function ReservationModal({ cafe, table, onClose }: { cafe: Cafe; table: 
                 <div className="flex items-center gap-2 rounded-full bg-capacity-greenBg px-4 py-1.5 text-sm font-bold text-capacity-green">
                   <CircleCheck size={16} /> Reservation confirmed
                 </div>
-                <QrTicket payload={`tameout://ticket/${result.qrCodeToken}`} />
+                <div className="w-full rounded-2xl bg-ink-50 px-4 py-5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-ink-400">Reservation code</p>
+                  <p className="mt-1 font-mono text-3xl font-extrabold tracking-wider text-ink-900">{result.reservationCode}</p>
+                  <p className="mt-2 text-xs text-ink-500">Tell the cashier this code when you arrive.</p>
+                </div>
                 <div>
-                  <p className="text-lg font-bold text-ink-900">{result.reservationCode}</p>
                   <p className="text-sm text-ink-600">
-                    Table {table.tableCode} · {partySize} guests · {slotMinutes} min
+                    Table {table.tableCode} · {partySize} guests
                   </p>
                   <p className="text-xs text-ink-400">
                     {startHour.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} today
@@ -299,7 +302,7 @@ export function ReservationModal({ cafe, table, onClose }: { cafe: Cafe; table: 
                     <p className="flex items-center gap-1.5 font-semibold text-ink-900">
                       <Bell size={13} /> Notifications sent
                     </p>
-                    <p>✅ WhatsApp: QR ticket delivered to {mode === "guest" ? whatsapp : "your account number"}</p>
+                    <p>✅ WhatsApp: booking confirmation sent to {mode === "guest" ? whatsapp : "your account number"}</p>
                     <p>⏰ WhatsApp: H-1 hour reminder scheduled</p>
                     <p>🔔 In-app push queued for your device</p>
                   </div>

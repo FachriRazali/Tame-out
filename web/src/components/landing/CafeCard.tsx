@@ -8,17 +8,11 @@ import { CapacityBadge } from "@/components/ui/CapacityBadge";
 import { MapPin, Pin, Star, Users } from "@/components/ui/icons";
 import clsx from "clsx";
 
-// Price badge — now driven by avgPriceIdr (the same number the landing
-// page's price-bucket filter uses) instead of the old $/$$/$$$ tier, so the
-// badge always matches whichever bucket button would highlight this cafe.
-// Visual weight still scales with price so a pricier cafe doesn't look
-// identical in intent to a cheap one.
-function priceBadgeStyle(avgPriceIdr: number): string {
-  if (avgPriceIdr < 25000) return "bg-capacity-green/90 text-white";
-  if (avgPriceIdr < 50000) return "bg-amber-500/90 text-white";
-  if (avgPriceIdr < 75000) return "bg-orange-600/90 text-white";
-  return "bg-ink-900/90 text-white";
-}
+// Price badge — driven by avgPriceIdr (the same number the landing page's
+// price-bucket filter uses). Deliberately ONE neutral style for every price:
+// colouring cheap/pricey cafes differently would put a label on them (e.g. red
+// or orange = "expensive") that reads as a judgement of the cafe.
+const PRICE_BADGE_STYLE = "bg-surface/90 text-ink-900 ring-1 ring-ink-900/10";
 
 // "35000" -> "35rb", "100000" -> "100rb" — compact rupiah shorthand that
 // matches the "< 25rb" / "75-100rb+" labels used in the filter bar.
@@ -82,9 +76,7 @@ export function CafeCard({ cafe, index }: { cafe: Cafe; index: number }) {
           )}
 
           <div
-            className={`absolute right-1 top-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide shadow-sm backdrop-blur sm:right-3 sm:top-3 sm:px-2.5 sm:py-1 sm:text-xs ${priceBadgeStyle(
-              cafe.avgPriceIdr,
-            )}`}
+            className={`absolute right-1 top-1 rounded-full px-1.5 py-0.5 text-[9px] font-bold tracking-wide shadow-sm backdrop-blur sm:right-3 sm:top-3 sm:px-2.5 sm:py-1 sm:text-xs ${PRICE_BADGE_STYLE}`}
           >
             ~{formatRupiahShort(cafe.avgPriceIdr)}
           </div>

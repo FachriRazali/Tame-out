@@ -39,6 +39,9 @@
    (page background), with cream #f5f5dc text and sage #839174 accents, so
    there is no white anywhere in this theme. */
 .dark {
+  /* Tells the browser to draw its own widgets (date/time pickers, select
+     arrows, scrollbars, autofill) for a dark page. */
+  color-scheme: dark;
   --bg: 28 39 23; /* #1c2717 */
   --surface: 37 51 31; /* #25331f — cards / panels, one step above the page */
   --surface-2: 48 65 40; /* #304128 */
@@ -73,6 +76,34 @@
 }
 .dark .bg-ink-900\/90 {
   background-color: rgba(17, 26, 14, 0.92);
+}
+
+/* Form fields. Without a background of their own the browser paints them
+   white, and the cream text colour then disappears into it (sign-in form,
+   reservation time, search boxes...). Fields that set their own bg-* class
+   are left alone. */
+.dark
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(
+    [type="color"]
+  ):not([class*="bg-"]),
+.dark select:not([class*="bg-"]),
+.dark textarea:not([class*="bg-"]) {
+  background-color: rgb(var(--surface-2));
+  color: rgb(var(--ink-900));
+}
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: rgb(var(--ink-400));
+  opacity: 1;
+}
+
+/* In the dark theme the capacity colours turn into light pastels, so white
+   text on a SOLID capacity background (confirm / destructive buttons) would
+   be unreadable — use the deep green for the text there instead. */
+.dark .bg-capacity-green,
+.dark .bg-capacity-yellow,
+.dark .bg-capacity-red {
+  color: #111a0e;
 }
 
 /* Light sage tints (active chips, hover states) would be near-white on dark

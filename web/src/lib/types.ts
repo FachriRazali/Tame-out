@@ -185,6 +185,8 @@ export interface Payment {
 export interface NotificationLogEntry {
   id: number;
   reservationId: number;
+  reservationCode?: string;
+  guestName?: string;
   channel: "whatsapp" | "push";
   type: string;
   recipient: string;

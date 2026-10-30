@@ -23,6 +23,11 @@ const RULES: {
   },
   { prefix: "/pos", roles: ["cashier", "merchant", "admin", "super_admin"] },
   { prefix: "/admin", roles: ["super_admin"] },
+  // "My reservations" — any signed-in account; signed-out visitors go to /login first.
+  {
+    prefix: "/reservations",
+    roles: ["customer", "cashier", "merchant", "admin", "super_admin"],
+  },
 ];
 
 export async function middleware(req: NextRequest) {
@@ -39,5 +44,10 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/merchant/:path*", "/pos/:path*", "/admin/:path*"],
+  matcher: [
+    "/merchant/:path*",
+    "/pos/:path*",
+    "/admin/:path*",
+    "/reservations/:path*",
+  ],
 };
