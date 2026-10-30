@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { Cafe, CafeTable } from "@/lib/types";
 import { useCountdown } from "./useCountdown";
+import { fetchSessionUser } from "@/lib/sessionUser";
 import {
   X,
   Users,
@@ -56,15 +57,12 @@ export function ReservationModal({ cafe, table, onClose }: { cafe: Cafe; table: 
   const pathname = usePathname();
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => {
-        setSession(d.user ?? null);
-        // Someone who is already signed in books under their account by default,
-        // so the reservation shows up in "My reservations".
-        if (d.user) setMode("registered");
-      })
-      .catch(() => setSession(null));
+    fetchSessionUser().then((user) => {
+      setSession(user as SessionUser | null);
+      // Someone who is already signed in books under their account by default,
+      // so the reservation shows up in "My reservations".
+      if (user) setMode("registered");
+    });
   }, []);
 
   const countdown = useCountdown(result?.payment?.holdExpiresAt ?? null);

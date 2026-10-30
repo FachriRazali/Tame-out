@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { fetchSessionUser } from "@/lib/sessionUser";
 
 export interface StaffSessionUser {
   id: number;
@@ -26,10 +27,7 @@ export function useStaffContext() {
   const [firstCafeId, setFirstCafeId] = useState<number | undefined>(undefined);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((data) => setSession(data.user ?? null))
-      .catch(() => setSession(null));
+    fetchSessionUser().then(setSession);
   }, []);
 
   const isCafeStaff =

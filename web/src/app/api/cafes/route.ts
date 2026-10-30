@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { listCafes } from "@/lib/store";
 import { PriceBucket } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
+// Public list: let the CDN reuse one answer for a few seconds (live capacity stays
+// ~10s fresh) and serve a slightly stale copy while it refreshes in the background.
+const CACHE_HEADERS = { "Cache-Control": "public, max-age=0, s-maxage=10, stale-while-revalidate=30" };
+
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const lat = sp.get("lat") ? Number(sp.get("lat")) : undefined;
@@ -23,5 +29,5 @@ export async function GET(req: NextRequest) {
     availability,
     q
   });
-  return NextResponse.json({ data, total: data.length });
+  return NextResponse.json({ data, total: data.length }, { headers: CACHE_HEADERS });
 }

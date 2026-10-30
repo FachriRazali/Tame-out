@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { MenuItem } from "@/lib/types";
 import { readImageAsDataUrl } from "@/lib/readImage";
+import { fetchSessionUser } from "@/lib/sessionUser";
 import {
   Check,
   FileText,
@@ -58,18 +59,14 @@ export function MenuSection({
     // (merchant / cashier / admin) can edit the menu of THEIR cafe only, and
     // the super admin can edit every cafe's menu — the API enforces the same
     // rule, so these controls are only a convenience.
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => {
-        const user = d.user;
-        const isCafeStaff =
-          (user?.role === "cashier" ||
-            user?.role === "merchant" ||
-            user?.role === "admin") &&
-          Number(user?.cafeId) === cafeId;
-        setIsStaff(isCafeStaff || user?.role === "super_admin");
-      })
-      .catch(() => setIsStaff(false));
+    fetchSessionUser().then((user) => {
+      const isCafeStaff =
+        (user?.role === "cashier" ||
+          user?.role === "merchant" ||
+          user?.role === "admin") &&
+        Number(user?.cafeId) === cafeId;
+      setIsStaff(isCafeStaff || user?.role === "super_admin");
+    });
   }, [cafeId]);
 
   useEffect(() => {

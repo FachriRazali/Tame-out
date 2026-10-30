@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ScanLine } from "@/components/ui/icons";
+import { fetchSessionUser } from "@/lib/sessionUser";
 
 // Small "Halaman kerja" shortcut for the customer landing page header — only
 // for a signed-in staff account (cafe staff → Cashier POS, super_admin →
@@ -13,10 +14,7 @@ export function StaffWorkspaceLink() {
   const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => setRole(d.user?.role ?? null))
-      .catch(() => setRole(null));
+    fetchSessionUser().then((user) => setRole(user?.role ?? null));
   }, []);
 
   const isStaff =

@@ -4,13 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { History, LogIn, UserRound } from "@/components/ui/icons";
-
-interface SessionUser {
-  id: number;
-  fullName: string;
-  email: string;
-  role: "super_admin" | "admin" | "merchant" | "cashier" | "customer";
-}
+import { fetchSessionUser, type SessionUser } from "@/lib/sessionUser";
 
 /** Small "who's signed in" chip for page headers — shared by the customer,
  * merchant and POS layouts so the login state reads the same everywhere. */
@@ -19,9 +13,7 @@ export function AuthStatus() {
   const [user, setUser] = useState<SessionUser | null | undefined>(undefined);
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => setUser(d.user ?? null));
+    fetchSessionUser().then(setUser);
   }, []);
 
   async function logout() {

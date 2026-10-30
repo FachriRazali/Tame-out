@@ -420,7 +420,12 @@ export async function getDistricts(): Promise<District[]> {
 const CAFE_SELECT = `
   SELECT
     c.id, c.name, c.slug, c.description, c.district_id, d.name AS district_name,
-    c.address, c.latitude, c.longitude, c.price_tier, c.avg_price_idr, c.whatsapp_number, c.cover_image_url,
+    c.address, c.latitude, c.longitude, c.price_tier, c.avg_price_idr, c.whatsapp_number,
+    -- The cover is a base64 data: URL (100s of KB). Keep it out of list/detail JSON:
+    -- send only a flag + size and let the browser fetch it from /api/cafes/:id/cover-image.
+    CASE WHEN substr(c.cover_image_url, 1, 5) = 'data:' THEN NULL ELSE c.cover_image_url END AS cover_image_url,
+    (substr(c.cover_image_url, 1, 5) = 'data:') AS cover_is_data,
+    pg_column_size(c.cover_image_url) AS cover_size,
     c.menu_document_url, c.menu_document_type,
     c.opening_time, c.closing_time, c.popularity_score, c.avg_rating, c.total_reviews,
     c.requires_down_payment, c.dp_amount, c.dp_hold_minutes, c.default_slot_minutes, c.grace_period_minutes,
@@ -436,6 +441,30 @@ const CAFE_SELECT = `
   LEFT JOIN cafe_live_capacity lc ON lc.cafe_id = c.id
   WHERE c.is_active = true
 `;
+
+// Cover photos uploaded from the app are stored as base64 data: URLs. Instead of
+// shipping them inside every list response, point at a cacheable image URL; the
+// ?v= size token changes whenever the photo is replaced, so browsers/CDN can keep
+// each version for a long time. Plain http(s) covers (e.g. Unsplash) pass through.
+function coverUrlFor(r: {
+  id: number;
+  cover_image_url?: string | null;
+  cover_is_data?: boolean;
+  cover_size?: number | string;
+}): string {
+  if (r.cover_is_data)
+    return `/api/cafes/${r.id}/cover-image?v=${Number(r.cover_size) || 0}`;
+  return r.cover_image_url ?? "";
+}
+
+/** Raw stored cover (data: URL or http(s) URL) for the image endpoint. */
+export async function getCafeCoverRaw(cafeId: number): Promise<string | null> {
+  const rows = await query<any>(
+    `SELECT cover_image_url FROM cafes WHERE id = $1 AND is_active = true`,
+    [cafeId],
+  );
+  return rows[0]?.cover_image_url || null;
+}
 
 function mapCafeRow(r: any, origin?: { lat: number; lng: number }): Cafe {
   const lat = Number(r.latitude);
@@ -453,7 +482,7 @@ function mapCafeRow(r: any, origin?: { lat: number; lng: number }): Cafe {
     priceTier: r.price_tier,
     avgPriceIdr: Number(r.avg_price_idr),
     whatsappNumber: r.whatsapp_number,
-    coverImageUrl: r.cover_image_url ?? "",
+    coverImageUrl: coverUrlFor(r),
     openingTime: String(r.opening_time ?? "08:00:00").slice(0, 5),
     closingTime: String(r.closing_time ?? "22:00:00").slice(0, 5),
     popularityScore: Number(r.popularity_score),
@@ -573,7 +602,11 @@ export async function getBoostedCafes(
   { id: number; name: string; coverImageUrl: string; boostTagline: string }[]
 > {
   const rows = await query<any>(
-    `SELECT id, name, cover_image_url, boost_tagline FROM cafes
+    `SELECT id, name, boost_tagline,
+            CASE WHEN substr(cover_image_url, 1, 5) = 'data:' THEN NULL ELSE cover_image_url END AS cover_image_url,
+            (substr(cover_image_url, 1, 5) = 'data:') AS cover_is_data,
+            pg_column_size(cover_image_url) AS cover_size
+     FROM cafes
      WHERE is_active = true AND is_boosted = true
      ORDER BY popularity_score DESC, created_at DESC LIMIT $1`,
     [limit],
@@ -581,7 +614,7 @@ export async function getBoostedCafes(
   return rows.map((r) => ({
     id: r.id,
     name: r.name,
-    coverImageUrl: r.cover_image_url ?? "",
+    coverImageUrl: coverUrlFor(r),
     boostTagline: r.boost_tagline ?? "",
   }));
 }
