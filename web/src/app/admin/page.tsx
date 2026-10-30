@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { AuthStatus } from "@/components/ui/AuthStatus";
 import { StaffNavTabs } from "@/components/staff/StaffNavTabs";
+import { CafeGallery } from "@/components/gallery/CafeGallery";
 import { useStaffContext } from "@/lib/useStaffContext";
 import { readImageAsDataUrl } from "@/lib/readImage";
 import {
@@ -221,6 +222,18 @@ export default function AdminPage() {
                 key={`cover-${selectedCafe.id}`}
                 cafe={selectedCafe}
               />
+            )}
+
+            {selectedCafe && (
+              <div className="mt-6 rounded-2xl bg-surface p-5 shadow-card ring-1 ring-ink-900/5 [&>section]:mt-0">
+                <CafeGallery
+                  key={`gallery-${selectedCafe.id}`}
+                  cafeId={selectedCafe.id}
+                  canManage
+                  title={`Foto ruangan — ${selectedCafe.name}`}
+                  onCoverChanged={() => refreshCafes(selectedCafe.id)}
+                />
+              </div>
             )}
 
             {selectedCafe && (

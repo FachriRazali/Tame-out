@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import clsx from "clsx";
 import { CafeTable, Floor } from "@/lib/types";
+import { RoomOutline } from "@/components/floorplan/RoomOutline";
 import { TableShape, STATUS_LABEL } from "./TableShape";
 import {
   Building2,
@@ -104,25 +105,17 @@ export function FloorPlanViewer({
           className="max-h-[520px] w-full"
           style={{ minWidth: 480 }}
         >
-          {activeFloor.outlinePoints &&
-          activeFloor.outlinePoints.length >= 3 ? (
-            <polygon
-              points={activeFloor.outlinePoints
-                .map(
-                  ([px, py]) =>
-                    `${(px / 100) * activeFloor.canvasWidth},${(py / 100) * activeFloor.canvasHeight}`,
-                )
-                .join(" ")}
-              className="fill-ink-100/40 stroke-ink-100"
-              strokeWidth={2}
-            />
-          ) : (
-            <rect
-              width={activeFloor.canvasWidth}
-              height={activeFloor.canvasHeight}
-              fill="transparent"
-            />
-          )}
+          <rect
+            width={activeFloor.canvasWidth}
+            height={activeFloor.canvasHeight}
+            fill="transparent"
+          />
+          <RoomOutline
+            points={activeFloor.outlinePoints}
+            width={activeFloor.canvasWidth}
+            height={activeFloor.canvasHeight}
+            shadeOutside={false}
+          />
           {activeFloor.tables.map((t) => (
             <TableShape
               key={t.id}

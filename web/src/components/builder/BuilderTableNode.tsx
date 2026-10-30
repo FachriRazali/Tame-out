@@ -39,7 +39,7 @@ export function BuilderTableNode({
         borderRadius: isRound ? "999px" : isRect ? 10 : 14,
       }}
       className={clsx(
-        "flex cursor-grab select-none flex-col items-center justify-center border-2 text-center transition-shadow active:cursor-grabbing",
+        "flex cursor-grab touch-none select-none flex-col items-center justify-center border-2 text-center transition-shadow active:cursor-grabbing",
         selected && "ring-2 ring-ink-900 ring-offset-2",
       )}
     >

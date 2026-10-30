@@ -2,9 +2,14 @@
 
 import Link from "next/link";
 import clsx from "clsx";
-import { LayoutGrid, ScanLine, UtensilsCrossed } from "@/components/ui/icons";
+import {
+  ImageIcon,
+  LayoutGrid,
+  ScanLine,
+  UtensilsCrossed,
+} from "@/components/ui/icons";
 
-export type StaffTab = "builder" | "pos" | "menu";
+export type StaffTab = "builder" | "pos" | "menu" | "photos";
 
 // Underline tabs that live INSIDE a staff page's header (Cashier POS, Floor
 // Plan Builder, the cafe page's staff bar, Super Admin) — not a global bar.
@@ -13,7 +18,7 @@ export type StaffTab = "builder" | "pos" | "menu";
 // cashier and admin are all-in-one staff roles (see middleware.ts +
 // staffAuth.ts), so every one of them can reach all three.
 //
-// Menu management lives on the public cafe page (MenuSection.tsx — isStaff
+// Menu and photo management live on the public cafe page (MenuSection.tsx — isStaff
 // there unlocks the edit controls), so that tab deep-links to "#menu".
 // `active` says which tab is current; pass nothing (e.g. on /admin) for none.
 export function StaffNavTabs({
@@ -52,6 +57,13 @@ export function StaffNavTabs({
       label: "Menu cafe",
       shortLabel: "Menu",
       icon: UtensilsCrossed,
+    },
+    {
+      key: "photos",
+      href: `/cafe/${cafeId}#photos`,
+      label: "Foto cafe",
+      shortLabel: "Foto",
+      icon: ImageIcon,
     },
   ];
 

@@ -12,26 +12,52 @@ export function ThemeToggle() {
     setIsDark(document.documentElement.classList.contains("dark"));
   }, []);
 
-  function toggle() {
-    const next = !isDark;
+  function choose(next: boolean) {
     setIsDark(next);
     document.documentElement.classList.toggle("dark", next);
-    localStorage.setItem(STORAGE_KEY, next ? "dark" : "light");
+    try {
+      localStorage.setItem(STORAGE_KEY, next ? "dark" : "light");
+    } catch {
+      // storage can be blocked (private mode) — the theme still applies for this visit
+    }
   }
 
+  // Two-segment switch: the segment that is highlighted is the mode you are in
+  // right now (Sun = Light, Moon = Dark). Earlier versions showed ONE icon for
+  // the mode you would switch to, which read as "swapped".
+  const seg = (active: boolean) =>
+    "flex h-7 w-7 items-center justify-center rounded-full transition " +
+    (active
+      ? "bg-brand-500 text-white shadow-sm"
+      : "text-ink-500 hover:text-ink-900");
+
   return (
-    <button
-      onClick={toggle}
-      aria-label={
-        isDark
-          ? "Switch to light (beige) theme"
-          : "Switch to dark (green) theme"
-      }
-      title={isDark ? "Light mode" : "Dark mode"}
-      className="flex h-9 w-9 items-center justify-center rounded-full bg-ink-100 text-ink-700 transition hover:bg-ink-100/70"
+    <div
+      role="group"
+      aria-label="Theme"
+      className="inline-flex items-center gap-0.5 rounded-full bg-ink-100 p-0.5"
     >
-      {isDark ? <Sun size={16} /> : <Moon size={16} />}
-    </button>
+      <button
+        type="button"
+        onClick={() => choose(false)}
+        aria-pressed={!isDark}
+        aria-label="Light mode"
+        title="Light mode"
+        className={seg(!isDark)}
+      >
+        <Sun size={15} />
+      </button>
+      <button
+        type="button"
+        onClick={() => choose(true)}
+        aria-pressed={isDark}
+        aria-label="Dark mode"
+        title="Dark mode"
+        className={seg(isDark)}
+      >
+        <Moon size={15} />
+      </button>
+    </div>
   );
 }
 

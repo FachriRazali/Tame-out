@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/icons";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
 import { StaffCafeBar } from "@/components/staff/StaffCafeBar";
+import { CafeGallery } from "@/components/gallery/CafeGallery";
+import { useStaffContext } from "@/lib/useStaffContext";
 
 interface CafeDetail extends Cafe {
   floors: Floor[];
@@ -30,6 +32,7 @@ export default function CafeDetailPage() {
   const [cafe, setCafe] = useState<CafeDetail | null>(null);
   const [selectedTable, setSelectedTable] = useState<CafeTable | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const { session, isCafeStaff, isSuperAdmin } = useStaffContext();
 
   async function refresh() {
     const res = await fetch(`/api/cafes/${params.id}`);
@@ -168,6 +171,14 @@ export default function CafeDetailPage() {
             selectedTableId={selectedTable?.id}
           />
         </div>
+
+        <CafeGallery
+          cafeId={cafe.id}
+          canManage={
+            isSuperAdmin || (isCafeStaff && Number(session?.cafeId) === cafe.id)
+          }
+          onCoverChanged={refresh}
+        />
 
         <MenuSection
           cafeId={cafe.id}

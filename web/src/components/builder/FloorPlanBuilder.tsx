@@ -1,7 +1,13 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
+import { RoomOutline } from "@/components/floorplan/RoomOutline";
+import { RoomShapeOverlay } from "@/components/builder/RoomShapeOverlay";
+import {
+  SHAPE_PRESETS,
+  pointInPolygon,
+} from "@/components/builder/shapePresets";
 import {
   CafeTable,
   Floor,
@@ -71,7 +77,9 @@ export function FloorPlanBuilder({
     [],
   );
   const [savingShape, setSavingShape] = useState(false);
-  const draggingPointIndex = useRef<number | null>(null);
+  const [shapeSavedAt, setShapeSavedAt] = useState<Date | null>(null);
+  const [selectedPoint, setSelectedPoint] = useState<number | null>(null);
+  const [snapToGrid, setSnapToGrid] = useState(true);
 
   const levels = useMemo(
     () => [...new Set(floors.map((f) => f.level))].sort((a, b) => a - b),
@@ -85,6 +93,131 @@ export function FloorPlanBuilder({
     floors.find((f) => f.id === activeFloorId) ?? floorsOnLevel[0] ?? floors[0];
   const selectedTable =
     activeFloor?.tables.find((t) => t.id === selectedTableId) ?? null;
+
+  // Tables whose centre falls outside the room outline (the draft while editing,
+  // otherwise the saved one). Customers only see the room, so these would float
+  // outside it — warn the merchant instead of silently hiding bookable tables.
+  const tablesOutsideShape = useMemo(() => {
+    if (!activeFloor) return [] as string[];
+    const poly = shapeEditMode
+      ? draftPoints
+      : (activeFloor.outlinePoints ?? []).map(([px, py]) => ({
+          x: (px / 100) * activeFloor.canvasWidth,
+          y: (py / 100) * activeFloor.canvasHeight,
+        }));
+    if (poly.length < 3) return [];
+    return activeFloor.tables
+      .filter(
+        (t) => !pointInPolygon(t.x + t.width / 2, t.y + t.height / 2, poly),
+      )
+      .map((t) => t.tableCode);
+  }, [activeFloor, shapeEditMode, draftPoints]);
+
+  // Zone / level settings: rename, change type, delete.
+  const [nameDraft, setNameDraft] = useState("");
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<"zone" | "level" | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState(false);
+  const [metaNotice, setMetaNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    setNameDraft(activeFloor?.name ?? "");
+    setConfirmDelete(null);
+    setMetaNotice(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFloor?.id]);
+
+  async function saveZoneMeta(patch: { name?: string; zoneType?: ZoneType }) {
+    if (!activeFloor) return;
+    const floorId = activeFloor.id;
+    setSavingMeta(true);
+    setErrorMsg(null);
+    setMetaNotice(null);
+    try {
+      const res = await apiFetch(`/api/merchant/floors/${floorId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok)
+        throw new Error(
+          await describeFailure(res, "Could not update this zone."),
+        );
+      const saved: { name: string; zoneType: ZoneType } = await res.json();
+      updateFloor(floorId, (f) => ({
+        ...f,
+        name: saved.name,
+        zoneType: saved.zoneType,
+      }));
+      setNameDraft(saved.name);
+      setMetaNotice("Zona diperbarui ✓");
+    } catch (e) {
+      setErrorMsg(friendlyNetworkError(e, "Could not update this zone."));
+    } finally {
+      setSavingMeta(false);
+    }
+  }
+
+  // After a delete, land on a sensible floor (same level first, else any).
+  function afterDelete(removedIds: number[], preferLevel?: number) {
+    const rest = floors.filter((f) => !removedIds.includes(f.id));
+    setFloors(rest);
+    setSelectedTableId(null);
+    setConfirmDelete(null);
+    const next = rest.find((f) => f.level === preferLevel) ?? rest[0];
+    setActiveFloorId(next?.id as number);
+    if (next) setActiveLevel(next.level);
+  }
+
+  async function deleteZone() {
+    if (!activeFloor) return;
+    setDeleting(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(`/api/merchant/floors/${activeFloor.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok)
+        throw new Error(
+          await describeFailure(res, "Could not delete this zone."),
+        );
+      afterDelete([activeFloor.id], activeFloor.level);
+    } catch (e) {
+      setConfirmDelete(null);
+      setErrorMsg(friendlyNetworkError(e, "Could not delete this zone."));
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  async function deleteLevel() {
+    if (!activeFloor) return;
+    setDeleting(true);
+    setErrorMsg(null);
+    try {
+      const res = await fetch(
+        `/api/merchant/floors?cafeId=${cafeId}&level=${activeLevel}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok)
+        throw new Error(
+          await describeFailure(res, "Could not delete this floor level."),
+        );
+      afterDelete(
+        floors.filter((f) => f.level === activeLevel).map((f) => f.id),
+        undefined,
+      );
+    } catch (e) {
+      setConfirmDelete(null);
+      setErrorMsg(
+        friendlyNetworkError(e, "Could not delete this floor level."),
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function selectLevel(level: number) {
     setActiveLevel(level);
@@ -165,45 +298,45 @@ export function FloorPlanBuilder({
   function onPointerDown(e: React.PointerEvent, table: CafeTable) {
     e.stopPropagation();
     const canvasRect = canvasRef.current?.getBoundingClientRect();
-    if (!canvasRect) return;
+    if (!canvasRect || !activeFloor) return;
+    const floorId = activeFloor.id;
+    const maxX = activeFloor.canvasWidth - 40;
+    const maxY = activeFloor.canvasHeight - 40;
     dragState.current = {
       id: table.id,
       offsetX: e.clientX - canvasRect.left - table.x,
       offsetY: e.clientY - canvasRect.top - table.y,
     };
     setSelectedTableId(table.id);
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-  }
 
-  function onPointerMove(e: PointerEvent) {
-    const drag = dragState.current;
-    const canvasRect = canvasRef.current?.getBoundingClientRect();
-    if (!drag || !canvasRect || !activeFloor) return;
-    const x = Math.max(
-      0,
-      Math.min(
-        activeFloor.canvasWidth - 40,
-        e.clientX - canvasRect.left - drag.offsetX,
-      ),
-    );
-    const y = Math.max(
-      0,
-      Math.min(
-        activeFloor.canvasHeight - 40,
-        e.clientY - canvasRect.top - drag.offsetY,
-      ),
-    );
-    updateFloor(activeFloor.id, (f) => ({
-      ...f,
-      tables: f.tables.map((t) => (t.id === drag.id ? { ...t, x, y } : t)),
-    }));
-  }
-
-  function onPointerUp() {
-    dragState.current = null;
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
+    // The very same function objects are added and removed, so nothing leaks
+    // between drags (the old version removed a different closure than it added).
+    const move = (ev: PointerEvent) => {
+      const drag = dragState.current;
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!drag || !rect) return;
+      const x = Math.max(
+        0,
+        Math.min(maxX, ev.clientX - rect.left - drag.offsetX),
+      );
+      const y = Math.max(
+        0,
+        Math.min(maxY, ev.clientY - rect.top - drag.offsetY),
+      );
+      updateFloor(floorId, (f) => ({
+        ...f,
+        tables: f.tables.map((t) => (t.id === drag.id ? { ...t, x, y } : t)),
+      }));
+    };
+    const up = () => {
+      dragState.current = null;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
 
   function patchSelected(patch: Partial<CafeTable>) {
@@ -267,54 +400,25 @@ export function FloorPlanBuilder({
         : [],
     );
     setSelectedTableId(null);
+    setSelectedPoint(null);
     setShapeEditMode(true);
   }
 
   function cancelShapeEdit() {
     setShapeEditMode(false);
     setDraftPoints([]);
+    setSelectedPoint(null);
   }
 
-  function addDraftPoint(e: React.MouseEvent<HTMLDivElement>) {
-    if (!shapeEditMode || !activeFloor || !canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = Math.max(
-      0,
-      Math.min(activeFloor.canvasWidth, e.clientX - rect.left),
+  function applyPreset(points: OutlinePoint[]) {
+    if (!activeFloor) return;
+    setDraftPoints(
+      points.map(([px, py]) => ({
+        x: Math.round(((px / 100) * activeFloor.canvasWidth) / 10) * 10,
+        y: Math.round(((py / 100) * activeFloor.canvasHeight) / 10) * 10,
+      })),
     );
-    const y = Math.max(
-      0,
-      Math.min(activeFloor.canvasHeight, e.clientY - rect.top),
-    );
-    setDraftPoints((prev) => [...prev, { x, y }]);
-  }
-
-  function onShapePointDown(e: React.PointerEvent, index: number) {
-    e.stopPropagation();
-    draggingPointIndex.current = index;
-    window.addEventListener("pointermove", onShapePointMove);
-    window.addEventListener("pointerup", onShapePointUp);
-  }
-
-  function onShapePointMove(e: PointerEvent) {
-    const idx = draggingPointIndex.current;
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (idx === null || !rect || !activeFloor) return;
-    const x = Math.max(
-      0,
-      Math.min(activeFloor.canvasWidth, e.clientX - rect.left),
-    );
-    const y = Math.max(
-      0,
-      Math.min(activeFloor.canvasHeight, e.clientY - rect.top),
-    );
-    setDraftPoints((prev) => prev.map((p, i) => (i === idx ? { x, y } : p)));
-  }
-
-  function onShapePointUp() {
-    draggingPointIndex.current = null;
-    window.removeEventListener("pointermove", onShapePointMove);
-    window.removeEventListener("pointerup", onShapePointUp);
+    setSelectedPoint(null);
   }
 
   async function saveShape(overridePoints?: { x: number; y: number }[]) {
@@ -381,6 +485,8 @@ export function FloorPlanBuilder({
       }));
       setShapeEditMode(false);
       setDraftPoints([]);
+      setSelectedPoint(null);
+      setShapeSavedAt(new Date());
     } catch (e) {
       setErrorMsg(friendlyNetworkError(e, "Could not save this room shape."));
     } finally {
@@ -465,6 +571,39 @@ export function FloorPlanBuilder({
             )}{" "}
             Add floor level
           </button>
+          {confirmDelete === "level" ? (
+            <div className="mt-2 rounded-lg border border-capacity-red/30 bg-capacity-redBg p-2.5 text-xs text-capacity-red">
+              <p className="font-semibold">
+                Hapus Lantai {activeLevel} beserta {floorsOnLevel.length} zona
+                &amp; {floorsOnLevel.reduce((n, f) => n + f.tables.length, 0)}{" "}
+                meja? Tidak bisa dibatalkan.
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                <button
+                  onClick={deleteLevel}
+                  disabled={deleting}
+                  className="rounded-lg bg-capacity-red py-1.5 font-bold text-white disabled:opacity-60"
+                  data-testid="confirm-delete-level"
+                >
+                  {deleting ? "Menghapus…" : "Ya, hapus"}
+                </button>
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  className="rounded-lg bg-surface py-1.5 font-semibold text-ink-600"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete("level")}
+              className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-ink-100 py-1.5 text-xs font-semibold text-ink-500 hover:border-capacity-red/40 hover:text-capacity-red"
+              data-testid="delete-level"
+            >
+              <Trash2 size={13} /> Hapus Lantai {activeLevel}
+            </button>
+          )}
         </Panel>
 
         <Panel title="Zones">
@@ -508,6 +647,99 @@ export function FloorPlanBuilder({
               );
             })}
           </div>
+
+          <div
+            className="mt-4 space-y-2 border-t border-dashed border-ink-100 pt-3"
+            data-testid="zone-settings"
+          >
+            <p className="text-[11px] font-bold uppercase tracking-wide text-ink-400">
+              Pengaturan zona terpilih
+            </p>
+            <form
+              className="flex gap-1.5"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (nameDraft.trim() && nameDraft.trim() !== activeFloor.name)
+                  saveZoneMeta({ name: nameDraft });
+              }}
+            >
+              <input
+                value={nameDraft}
+                maxLength={40}
+                onChange={(e) => setNameDraft(e.target.value)}
+                aria-label="Nama zona"
+                placeholder="Nama zona"
+                className="min-w-0 flex-1 rounded-lg border border-ink-100 bg-surface px-2.5 py-1.5 text-sm font-semibold text-ink-900"
+              />
+              <button
+                type="submit"
+                disabled={
+                  savingMeta ||
+                  !nameDraft.trim() ||
+                  nameDraft.trim() === activeFloor.name
+                }
+                className="flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 text-xs font-bold text-white hover:bg-brand-700 disabled:opacity-40"
+              >
+                {savingMeta ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  <Check size={12} />
+                )}{" "}
+                Simpan
+              </button>
+            </form>
+            <select
+              value={activeFloor.zoneType}
+              onChange={(e) =>
+                saveZoneMeta({ zoneType: e.target.value as ZoneType })
+              }
+              disabled={savingMeta}
+              aria-label="Tipe zona"
+              className="w-full rounded-lg border border-ink-100 bg-surface px-2.5 py-1.5 text-xs font-semibold text-ink-700"
+            >
+              <option value="indoor">Indoor</option>
+              <option value="outdoor">Outdoor</option>
+              <option value="smoking">Smoking</option>
+            </select>
+            {metaNotice && (
+              <p className="text-[11px] font-semibold text-capacity-green">
+                {metaNotice}
+              </p>
+            )}
+
+            {confirmDelete === "zone" ? (
+              <div className="rounded-lg border border-capacity-red/30 bg-capacity-redBg p-2.5 text-xs text-capacity-red">
+                <p className="font-semibold">
+                  Hapus zona &ldquo;{activeFloor.name}&rdquo; dan{" "}
+                  {activeFloor.tables.length} mejanya? Tidak bisa dibatalkan.
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                  <button
+                    onClick={deleteZone}
+                    disabled={deleting}
+                    className="rounded-lg bg-capacity-red py-1.5 font-bold text-white disabled:opacity-60"
+                    data-testid="confirm-delete-zone"
+                  >
+                    {deleting ? "Menghapus…" : "Ya, hapus"}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDelete(null)}
+                    className="rounded-lg bg-surface py-1.5 font-semibold text-ink-600"
+                  >
+                    Batal
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setConfirmDelete("zone")}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-ink-100 py-1.5 text-xs font-semibold text-ink-500 hover:border-capacity-red/40 hover:text-capacity-red"
+                data-testid="delete-zone"
+              >
+                <Trash2 size={13} /> Hapus zona ini
+              </button>
+            )}
+          </div>
         </Panel>
 
         <Panel title="Add table">
@@ -535,40 +767,80 @@ export function FloorPlanBuilder({
                 activeFloor.outlinePoints.length >= 3
                   ? "Lantai ini pakai bentuk custom."
                   : "Lantai ini masih persegi biasa."}
+                {shapeSavedAt ? " (bentuk tersimpan ✓)" : ""}
               </p>
               <button
                 onClick={startShapeEdit}
                 className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-ink-200 py-2 text-xs font-semibold text-ink-500 hover:border-brand-400 hover:text-brand-600"
               >
-                <Pencil size={13} /> Gambar bentuk custom (L, +, dll)
+                <Pencil size={13} /> Ubah bentuk ruangan
               </button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               <p className="text-xs text-ink-400">
-                Klik di canvas untuk menambah titik. Minimal 3 titik untuk
-                bentuk custom.
+                Pilih bentuk siap pakai, atau gambar sendiri: <b>klik canvas</b>{" "}
+                = tambah titik, <b>seret titik</b> = geser, klik dua kali /
+                tombol hapus = buang titik. Area di luar bentuk diarsir.
               </p>
-              <p className="text-xs font-semibold text-ink-600">
+              <div className="grid grid-cols-2 gap-1.5">
+                {SHAPE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.key}
+                    type="button"
+                    onClick={() => applyPreset(preset.points)}
+                    className="rounded-lg border border-ink-100 py-1.5 text-xs font-semibold text-ink-700 hover:border-brand-400 hover:text-brand-700"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+              <label className="flex items-center gap-2 text-xs font-semibold text-ink-600">
+                <input
+                  type="checkbox"
+                  checked={snapToGrid}
+                  onChange={(e) => setSnapToGrid(e.target.checked)}
+                />
+                Snap ke grid (10 px)
+              </label>
+              <p
+                className="text-xs font-semibold text-ink-600"
+                data-testid="shape-point-count"
+              >
                 {draftPoints.length} titik
+                {draftPoints.length > 0 && draftPoints.length < 3
+                  ? " — minimal 3 titik"
+                  : ""}
               </p>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
-                  onClick={() => setDraftPoints((prev) => prev.slice(0, -1))}
-                  disabled={draftPoints.length === 0}
+                  type="button"
+                  onClick={() => {
+                    if (selectedPoint === null) return;
+                    setDraftPoints((prev) =>
+                      prev.filter((_, i) => i !== selectedPoint),
+                    );
+                    setSelectedPoint(null);
+                  }}
+                  disabled={selectedPoint === null}
                   className="rounded-lg border border-ink-100 py-1.5 text-xs font-semibold text-ink-600 hover:border-brand-300 disabled:opacity-40"
                 >
-                  Undo titik
+                  Hapus titik {selectedPoint !== null ? selectedPoint + 1 : ""}
                 </button>
                 <button
-                  onClick={() => setDraftPoints([])}
+                  type="button"
+                  onClick={() => {
+                    setDraftPoints([]);
+                    setSelectedPoint(null);
+                  }}
                   disabled={draftPoints.length === 0}
                   className="rounded-lg border border-ink-100 py-1.5 text-xs font-semibold text-ink-600 hover:border-brand-300 disabled:opacity-40"
                 >
-                  Clear
+                  Kosongkan
                 </button>
               </div>
               <button
+                type="button"
                 onClick={() => saveShape()}
                 disabled={
                   savingShape ||
@@ -582,19 +854,31 @@ export function FloorPlanBuilder({
                   <Check size={13} />
                 )}
                 {savingShape
-                  ? "Saving…"
+                  ? "Menyimpan…"
                   : draftPoints.length === 0
-                    ? "Save (reset ke persegi)"
-                    : "Save shape"}
+                    ? "Simpan (kembali ke persegi)"
+                    : "Simpan bentuk"}
               </button>
               <button
+                type="button"
                 onClick={cancelShapeEdit}
                 disabled={savingShape}
                 className="w-full rounded-lg border border-ink-100 py-1.5 text-xs font-semibold text-ink-500 hover:border-ink-300"
               >
-                Cancel
+                Batal
               </button>
             </div>
+          )}
+          {tablesOutsideShape.length > 0 && (
+            <p
+              className="mt-2.5 rounded-lg bg-capacity-yellowBg px-2.5 py-2 text-[11px] font-semibold text-capacity-yellow"
+              data-testid="tables-outside-warning"
+            >
+              {tablesOutsideShape.length} meja di luar bentuk ruangan (
+              {tablesOutsideShape.slice(0, 6).join(", ")}
+              {tablesOutsideShape.length > 6 ? "…" : ""}). Geser ke dalam
+              bentuk, atau lebarkan bentuknya.
+            </p>
           )}
         </Panel>
       </div>
@@ -631,12 +915,11 @@ export function FloorPlanBuilder({
         <div
           ref={canvasRef}
           onPointerDown={() => !shapeEditMode && setSelectedTableId(null)}
-          onClick={addDraftPoint}
           className={clsx(
-            "floor-grid relative overflow-hidden rounded-2xl border border-dashed bg-[linear-gradient(to_right,rgb(var(--ink-100)/0.7)_1px,transparent_1px),linear-gradient(to_bottom,rgb(var(--ink-100)/0.7)_1px,transparent_1px)] bg-surface",
+            "floor-grid relative rounded-2xl border border-dashed bg-[linear-gradient(to_right,rgb(var(--ink-100)/0.7)_1px,transparent_1px),linear-gradient(to_bottom,rgb(var(--ink-100)/0.7)_1px,transparent_1px)] bg-surface",
             shapeEditMode
               ? "cursor-crosshair border-brand-400"
-              : "border-ink-200",
+              : "overflow-hidden border-ink-200",
           )}
           style={{
             width: "100%",
@@ -645,26 +928,19 @@ export function FloorPlanBuilder({
             backgroundSize: "20px 20px",
           }}
         >
-          {/* Existing saved outline, shown as a backdrop whenever it's not actively being edited. */}
+          {/* Saved outline: area outside the room is shaded, edge drawn in brand colour. */}
           {!shapeEditMode &&
             activeFloor.outlinePoints &&
             activeFloor.outlinePoints.length >= 3 && (
               <svg
-                width={activeFloor.canvasWidth}
-                height={activeFloor.canvasHeight}
-                className="pointer-events-none absolute left-0 top-0"
+                viewBox={`0 0 ${activeFloor.canvasWidth} ${activeFloor.canvasHeight}`}
+                preserveAspectRatio="none"
+                className="pointer-events-none absolute left-0 top-0 h-full w-full"
               >
-                <polygon
-                  points={activeFloor.outlinePoints
-                    .map(
-                      ([px, py]) =>
-                        `${(px / 100) * activeFloor.canvasWidth},${(py / 100) * activeFloor.canvasHeight}`,
-                    )
-                    .join(" ")}
-                  fill="rgba(131,145,116,0.08)"
-                  stroke="#839174"
-                  strokeWidth={2}
-                  strokeDasharray="6 4"
+                <RoomOutline
+                  points={activeFloor.outlinePoints}
+                  width={activeFloor.canvasWidth}
+                  height={activeFloor.canvasHeight}
                 />
               </svg>
             )}
@@ -687,38 +963,17 @@ export function FloorPlanBuilder({
             </p>
           )}
 
-          {/* Freeform room-outline editor overlay: click the canvas to add a point,
-              drag a handle to move it. */}
+          {/* Room-outline editor overlay (presets / click to add / drag / delete). */}
           {shapeEditMode && (
-            <svg
+            <RoomShapeOverlay
               width={activeFloor.canvasWidth}
               height={activeFloor.canvasHeight}
-              className="pointer-events-none absolute left-0 top-0"
-            >
-              {draftPoints.length > 1 && (
-                <polygon
-                  points={draftPoints.map((p) => `${p.x},${p.y}`).join(" ")}
-                  fill="rgba(131,145,116,0.18)"
-                  stroke="#839174"
-                  strokeWidth={2}
-                  strokeDasharray={draftPoints.length < 3 ? "4 3" : undefined}
-                />
-              )}
-              {draftPoints.map((p, i) => (
-                <circle
-                  key={i}
-                  cx={p.x}
-                  cy={p.y}
-                  r={7}
-                  fill="#839174"
-                  stroke="#f5f5dc"
-                  strokeWidth={2}
-                  className="pointer-events-auto cursor-grab active:cursor-grabbing"
-                  onPointerDown={(e) => onShapePointDown(e, i)}
-                  onClick={(e) => e.stopPropagation()}
-                />
-              ))}
-            </svg>
+              points={draftPoints}
+              selected={selectedPoint}
+              snap={snapToGrid}
+              onChange={setDraftPoints}
+              onSelect={setSelectedPoint}
+            />
           )}
         </div>
         {savedAt && (

@@ -411,7 +411,13 @@ function mapCafeRow(r: any, origin?: { lat: number; lng: number }): Cafe {
     distanceKm: origin
       ? haversineDistanceKm(origin.lat, origin.lng, lat, lng)
       : undefined,
-    menuDocumentUrl: r.menu_document_url ?? undefined,
+    // A document stored as a base64 data: URL is served by its own route, so
+    // list/detail API responses don't carry megabytes of base64 every time.
+    menuDocumentUrl: r.menu_document_url
+      ? String(r.menu_document_url).startsWith("data:")
+        ? `/api/cafes/${r.id}/menu-document?v=${String(r.menu_document_url).length}`
+        : r.menu_document_url
+      : undefined,
     menuDocumentType: r.menu_document_type ?? undefined,
     hasBoardGames: r.has_board_games,
     hasPrayerRoom: r.has_prayer_room,
@@ -786,6 +792,96 @@ export async function createFloor(input: CreateFloorInput): Promise<Floor> {
   };
 }
 
+// Rename a zone / change its type (indoor | outdoor | smoking).
+export async function updateFloorMeta(
+  floorId: number,
+  patch: { name?: string; zoneType?: "indoor" | "outdoor" | "smoking" },
+  authorizedCafeId?: number,
+): Promise<
+  | { id: number; name: string; zoneType: "indoor" | "outdoor" | "smoking" }
+  | undefined
+> {
+  const rows = await query<any>(
+    `UPDATE floors SET name = COALESCE($3, name), zone_type = COALESCE($4::zone_type, zone_type)
+     WHERE id = $1 AND ($2::bigint IS NULL OR cafe_id = $2)
+     RETURNING id, name, zone_type`,
+    [
+      floorId,
+      authorizedCafeId ?? null,
+      patch.name ?? null,
+      patch.zoneType ?? null,
+    ],
+  );
+  if (rows[0])
+    return { id: rows[0].id, name: rows[0].name, zoneType: rows[0].zone_type };
+  // Distinguish "no such floor" from "floor of another cafe".
+  const exists = await query<any>(`SELECT 1 FROM floors WHERE id = $1`, [
+    floorId,
+  ]);
+  if (exists.length > 0) throw new Error("FORBIDDEN");
+  return undefined;
+}
+
+// Deletes one zone (floor row) — or, with `level`, every zone on a building
+// level — together with its tables. Refused (HAS_ACTIVE_RESERVATIONS /
+// TABLE_OCCUPIED) while a customer is booked or seated at one of those
+// tables. Past reservations are kept for the history: they are just detached
+// from the deleted table (reservations.table_id is nullable).
+export async function deleteFloors(
+  target: { floorId: number } | { cafeId: number; level: number },
+  authorizedCafeId?: number,
+): Promise<{ deletedFloors: number; deletedTables: number } | undefined> {
+  return withTransaction(async (client) => {
+    const floorRes =
+      "floorId" in target
+        ? await client.query(
+            `SELECT id, cafe_id FROM floors WHERE id = $1 FOR UPDATE`,
+            [target.floorId],
+          )
+        : await client.query(
+            `SELECT id, cafe_id FROM floors WHERE cafe_id = $1 AND level = $2 FOR UPDATE`,
+            [target.cafeId, target.level],
+          );
+    if (floorRes.rows.length === 0) return undefined;
+    if (
+      authorizedCafeId !== undefined &&
+      floorRes.rows.some((f) => Number(f.cafe_id) !== authorizedCafeId)
+    ) {
+      throw new Error("FORBIDDEN");
+    }
+    const floorIds: number[] = floorRes.rows.map((f) => Number(f.id));
+
+    const active = await client.query(
+      `SELECT 1 FROM reservations r JOIN tables t ON t.id = r.table_id
+       WHERE t.floor_id = ANY($1::bigint[])
+         AND r.status IN ('pending_payment','confirmed','checked_in') AND r.end_time > now() LIMIT 1`,
+      [floorIds],
+    );
+    if (active.rows.length > 0) throw new Error("HAS_ACTIVE_RESERVATIONS");
+    const occupied = await client.query(
+      `SELECT 1 FROM tables WHERE floor_id = ANY($1::bigint[]) AND status = 'occupied' LIMIT 1`,
+      [floorIds],
+    );
+    if (occupied.rows.length > 0) throw new Error("TABLE_OCCUPIED");
+
+    const tableRes = await client.query(
+      `SELECT id FROM tables WHERE floor_id = ANY($1::bigint[])`,
+      [floorIds],
+    );
+    const tableIds: number[] = tableRes.rows.map((t) => Number(t.id));
+    if (tableIds.length > 0) {
+      await client.query(
+        `UPDATE reservations SET table_id = NULL WHERE table_id = ANY($1::bigint[])`,
+        [tableIds],
+      );
+    }
+    await client.query(`DELETE FROM floors WHERE id = ANY($1::bigint[])`, [
+      floorIds,
+    ]); // tables cascade
+    return { deletedFloors: floorIds.length, deletedTables: tableIds.length };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Menu (staff-only writes, enforced by the API layer's PIN check)
 // ---------------------------------------------------------------------------
@@ -906,6 +1002,25 @@ export async function setMenuDocument(
     `UPDATE cafes SET menu_document_url = $2, menu_document_type = $3 WHERE id = $1`,
     [cafeId, url, type],
   );
+}
+
+export async function clearMenuDocument(cafeId: number): Promise<void> {
+  await query(
+    `UPDATE cafes SET menu_document_url = NULL, menu_document_type = NULL WHERE id = $1`,
+    [cafeId],
+  );
+}
+
+export async function getMenuDocument(
+  cafeId: number,
+): Promise<{ url: string; type: "pdf" | "image" } | undefined> {
+  const rows = await query<any>(
+    `SELECT menu_document_url, menu_document_type FROM cafes WHERE id = $1`,
+    [cafeId],
+  );
+  const r = rows[0];
+  if (!r?.menu_document_url) return undefined;
+  return { url: r.menu_document_url, type: r.menu_document_type ?? "image" };
 }
 
 // ---------------------------------------------------------------------------
@@ -1369,4 +1484,131 @@ export async function posReserveTable(
       reservation: mapReservationRow(resRow),
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// Cafe photo gallery (room / interior photos)
+// ---------------------------------------------------------------------------
+export const MAX_PHOTOS_PER_CAFE = 12;
+
+export interface CafePhoto {
+  id: number;
+  cafeId: number;
+  caption: string;
+  createdAt: string;
+}
+
+// cafe_photos is a newer table (database/migrations/2026-10-29-cafe-photos.sql).
+// If the database has not been migrated yet, reading just returns an empty
+// gallery and writing fails with PHOTOS_NOT_MIGRATED — so a missed migration
+// never breaks the cafe page itself.
+function isMissingTable(err: any): boolean {
+  return err?.code === "42P01";
+}
+
+// Never returns the image bytes — the gallery list stays tiny and each <img>
+// loads /api/cafe-photos/:id (immutable + cached) on its own.
+export async function listCafePhotos(cafeId: number): Promise<CafePhoto[]> {
+  try {
+    const rows = await query<any>(
+      `SELECT id, cafe_id, caption, created_at FROM cafe_photos WHERE cafe_id = $1 ORDER BY sort_order, id`,
+      [cafeId],
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      cafeId: r.cafe_id,
+      caption: r.caption ?? "",
+      createdAt: new Date(r.created_at).toISOString(),
+    }));
+  } catch (e) {
+    if (isMissingTable(e)) return [];
+    throw e;
+  }
+}
+
+export async function getCafePhotoRow(
+  photoId: number,
+): Promise<{ id: number; cafeId: number; imageUrl: string } | undefined> {
+  try {
+    const rows = await query<any>(
+      `SELECT id, cafe_id, image_url FROM cafe_photos WHERE id = $1`,
+      [photoId],
+    );
+    return rows[0]
+      ? { id: rows[0].id, cafeId: rows[0].cafe_id, imageUrl: rows[0].image_url }
+      : undefined;
+  } catch (e) {
+    if (isMissingTable(e)) return undefined;
+    throw e;
+  }
+}
+
+export async function addCafePhoto(
+  cafeId: number,
+  imageUrl: string,
+  caption: string,
+  uploadedBy?: number,
+): Promise<CafePhoto> {
+  try {
+    const count = await query<any>(
+      `SELECT COUNT(*)::int AS n FROM cafe_photos WHERE cafe_id = $1`,
+      [cafeId],
+    );
+    if ((count[0]?.n ?? 0) >= MAX_PHOTOS_PER_CAFE)
+      throw new Error("PHOTO_LIMIT");
+    const sort = await query<any>(
+      `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next FROM cafe_photos WHERE cafe_id = $1`,
+      [cafeId],
+    );
+    const rows = await query<any>(
+      `INSERT INTO cafe_photos (cafe_id, image_url, caption, sort_order, uploaded_by)
+       VALUES ($1, $2, $3, $4, $5) RETURNING id, cafe_id, caption, created_at`,
+      [
+        cafeId,
+        imageUrl,
+        caption.trim() === "" ? null : caption.trim().slice(0, 120),
+        sort[0]?.next ?? 0,
+        uploadedBy ?? null,
+      ],
+    );
+    const r = rows[0];
+    return {
+      id: r.id,
+      cafeId: r.cafe_id,
+      caption: r.caption ?? "",
+      createdAt: new Date(r.created_at).toISOString(),
+    };
+  } catch (e: any) {
+    if (isMissingTable(e)) throw new Error("PHOTOS_NOT_MIGRATED");
+    if (e?.code === "23503") throw new Error("NOT_FOUND"); // cafe id does not exist
+    throw e;
+  }
+}
+
+export async function updateCafePhotoCaption(
+  photoId: number,
+  caption: string,
+): Promise<boolean> {
+  const rows = await query<any>(
+    `UPDATE cafe_photos SET caption = $2 WHERE id = $1 RETURNING id`,
+    [photoId, caption.trim() === "" ? null : caption.trim().slice(0, 120)],
+  );
+  return rows.length > 0;
+}
+
+export async function deleteCafePhoto(photoId: number): Promise<boolean> {
+  const rows = await query<any>(
+    `DELETE FROM cafe_photos WHERE id = $1 RETURNING id`,
+    [photoId],
+  );
+  return rows.length > 0;
+}
+
+/** Makes a gallery photo the cafe's cover (landing card, carousel, cafe page hero). */
+export async function setCafeCoverFromPhoto(photoId: number): Promise<boolean> {
+  const rows = await query<any>(
+    `UPDATE cafes SET cover_image_url = p.image_url FROM cafe_photos p WHERE p.id = $1 AND cafes.id = p.cafe_id RETURNING cafes.id`,
+    [photoId],
+  );
+  return rows.length > 0;
 }
